@@ -31,6 +31,7 @@ docs
 package.json.bak.
 
 # -- CLEAN ALL
+.wireit
 node_modules
 
 # --
