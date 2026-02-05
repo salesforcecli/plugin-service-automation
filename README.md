@@ -1,6 +1,8 @@
+**NOTE: This template for sf plugins is not yet official. Please consult with the Platform CLI team before using this template.**
+
 # plugin-service-automation
 
-[![NPM](https://img.shields.io/npm/v/plugin-service-automation.svg?label=plugin-service-automation)](https://www.npmjs.com/package/plugin-service-automation) [![Downloads/week](https://img.shields.io/npm/dw/plugin-service-automation.svg)](https://npmjs.org/package/plugin-service-automation) [![License](https://img.shields.io/badge/License-BSD%203--Clause-brightgreen.svg)](https://raw.githubusercontent.com/salesforcecli/plugin-service-automation/main/LICENSE.txt)
+[![NPM](https://img.shields.io/npm/v/@salesforce/plugin-service-automation.svg?label=@salesforce/plugin-service-automation)](https://www.npmjs.com/package/@salesforce/plugin-service-automation) [![Downloads/week](https://img.shields.io/npm/dw/@salesforce/plugin-service-automation.svg)](https://npmjs.org/package/@salesforce/plugin-service-automation) [![License](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](https://opensource.org/license/apache-2-0)
 
 ## Using the template
 
@@ -22,9 +24,9 @@ This repository provides a template for creating a plugin for the Salesforce CLI
 
 ## Learn about `sf` plugins
 
-Salesforce CLI plugins are based on the [oclif plugin framework](<(https://oclif.io/docs/introduction.html)>). Read the [plugin developer guide](https://developer.salesforce.com/docs/atlas.en-us.sfdx_cli_plugins.meta/sfdx_cli_plugins/cli_plugins_architecture_sf_cli.htm) to learn about Salesforce CLI plugin development.
+Salesforce CLI plugins are based on the [oclif plugin framework](https://oclif.io/docs/introduction). Read the [plugin developer guide](https://developer.salesforce.com/docs/atlas.en-us.sfdx_cli_plugins.meta/sfdx_cli_plugins/cli_plugins_architecture_sf_cli.htm) to learn about Salesforce CLI plugin development.
 
-This repository contains a lot of additional scripts and tools to help with general Salesforce node development and enforce coding standards. You should familiarize yourself with some of the [node developer packages](#tooling) used by Salesforce. 
+This repository contains a lot of additional scripts and tools to help with general Salesforce node development and enforce coding standards. You should familiarize yourself with some of the [node developer packages](#tooling) used by Salesforce. There is also a default circleci config using the [release management orb](https://github.com/forcedotcom/npm-release-management-orb) standards.
 
 Additionally, there are some additional tests that the Salesforce CLI will enforce if this plugin is ever bundled with the CLI. These test are included by default under the `posttest` script and it is required to keep these tests active in your plugin if you plan to have it bundled.
 
@@ -38,12 +40,6 @@ Additionally, there are some additional tests that the Salesforce CLI will enfor
 - [@salesforce/dev-config](https://github.com/forcedotcom/dev-config)
 - [@salesforce/dev-scripts](https://github.com/forcedotcom/dev-scripts)
 
-### Hooks
-
-For cross clouds commands, e.g. `sf env list`, we utilize [oclif hooks](https://oclif.io/docs/hooks) to get the relevant information from installed plugins.
-
-This plugin includes sample hooks in the [src/hooks directory](src/hooks). You'll just need to add the appropriate logic. You can also delete any of the hooks if they aren't required for your plugin.
-
 # Everything past here is only a suggestion as to what should be in your specific plugin's description
 
 This plugin is bundled with the [Salesforce CLI](https://developer.salesforce.com/tools/sfdxcli). For more information on the CLI, read the [getting started guide](https://developer.salesforce.com/docs/atlas.en-us.sfdx_setup.meta/sfdx_setup/sfdx_setup_intro.htm).
@@ -53,7 +49,7 @@ We always recommend using the latest version of these commands bundled with the 
 ## Install
 
 ```bash
-sf plugins install plugin-service-automation@x.y.z
+sf plugins install @salesforce/plugin-service-automation@x.y.z
 ```
 
 ## Issues
@@ -115,20 +111,21 @@ sf plugins
 
 ## `sf hello world`
 
-Say hello either to the world or someone you know.
+Say hello.
 
 ```
 USAGE
-  $ sf hello world [--json] [-n <value>]
+  $ sf hello world [--json] [--flags-dir <value>] [-n <value>]
 
 FLAGS
   -n, --name=<value>  [default: World] The name of the person you'd like to say hello to.
 
 GLOBAL FLAGS
-  --json  Format output as json.
+  --flags-dir=<value>  Import flag values from a directory.
+  --json               Format output as json.
 
 DESCRIPTION
-  Say hello either to the world or someone you know.
+  Say hello.
 
   Say hello either to the world or someone you know.
 
@@ -140,6 +137,13 @@ EXAMPLES
   Say hello to someone you know:
 
     $ sf hello world --name Astro
+
+FLAG DESCRIPTIONS
+  -n, --name=<value>  The name of the person you'd like to say hello to.
+
+    This person can be anyone in the world!
 ```
+
+_See code: [src/commands/hello/world.ts](https://github.com/salesforcecli/plugin-service-automation/blob/1.1.76/src/commands/hello/world.ts)_
 
 <!-- commandsstop -->
