@@ -122,7 +122,7 @@ USAGE
   $ sf hello world [--json] [-n <value>]
 
 FLAGS
-  -n, --name=<value>  [default: World] The name of the person you'd like to say hello to.
+  -n, --name=<value>  [default: World] The name of the person you'd like to say hello.
 
 GLOBAL FLAGS
   --json  Format output as json.
