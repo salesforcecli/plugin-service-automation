@@ -43,7 +43,7 @@ export default class ServiceProcessDeploy extends SfCommand<ServiceProcessDeploy
   public async run(): Promise<ServiceProcessDeployResult> {
     const { flags } = await this.parse(ServiceProcessDeploy);
     const inputDir = flags['input-dir'];
-    this.log(`hello world, directory specified: ${inputDir}`);
+    this.log(`hello world , directory specified: ${inputDir}`);
     return {
       path: 'hello world',
     };

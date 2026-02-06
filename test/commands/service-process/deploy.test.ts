@@ -30,8 +30,8 @@ describe('service-process deploy', () => {
     $$.restore();
   });
 
-  it('runs hello', async () => {
-    await ServiceProcessDeploy.run([]);
+  it('runs deploy command', async () => {
+    await ServiceProcessDeploy.run(['--target-org', 'test@org.com', '--input-dir', './schemas']);
     const output = sfCommandStubs.log
       .getCalls()
       .flatMap((c) => c.args)
@@ -39,17 +39,8 @@ describe('service-process deploy', () => {
     expect(output).to.include('hello world');
   });
 
-  it('runs hello with --json and no provided name', async () => {
-    const result = await ServiceProcessDeploy.run([]);
-    expect(result.path).to.equal('src/commands/service-process/deploy.ts');
-  });
-
-  it('runs hello world --name Astro', async () => {
-    await ServiceProcessDeploy.run(['--name', 'Astro']);
-    const output = sfCommandStubs.log
-      .getCalls()
-      .flatMap((c) => c.args)
-      .join('\n');
-    expect(output).to.include('hello Astro');
+  it('runs deploy command with --json', async () => {
+    const result = await ServiceProcessDeploy.run(['--target-org', 'test@org.com', '--input-dir', './schemas']);
+    expect(result.path).to.equal('hello world');
   });
 });

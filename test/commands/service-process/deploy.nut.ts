@@ -27,10 +27,9 @@ describe('service-process deploy NUTs', () => {
     await session?.clean();
   });
 
-  it('should display provided name', () => {
-    const name = 'World';
-    const command = `service-process deploy --name ${name}`;
+  it('should display hello world', () => {
+    const command = 'service-process deploy --target-org test@org.com --input-dir ./schemas';
     const output = execCmd(command, { ensureExitCode: 0 }).shellOutput.stdout;
-    expect(output).to.contain(name);
+    expect(output).to.contain('hello world');
   });
 });

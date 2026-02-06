@@ -1,10 +1,10 @@
 [
   {
     "alias": [],
-    "command": "hello:world",
+    "command": "service-process:deploy",
     "flagAliases": [],
-    "flagChars": ["n"],
-    "flags": ["flags-dir", "json", "name"],
+    "flagChars": ["o", "d"],
+    "flags": ["flags-dir", "json", "target-org", "api-version", "input-dir"],
     "plugin": "@salesforce/plugin-service-automation"
   }
 ]
