@@ -52,8 +52,8 @@
       "@salesforce/plugin-command-reference"
     ],
     "topics": {
-      "hello": {
-        "description": "Commands to say hello."
+      "service-process": {
+        "description": "List Service Processes, retrieve a Service Process and its dependencies and deploy in another org."
       }
     },
     "flexibleTaxonomy": true

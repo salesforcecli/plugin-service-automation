@@ -16,9 +16,9 @@
 import { TestContext } from '@salesforce/core/testSetup';
 import { expect } from 'chai';
 import { stubSfCommandUx } from '@salesforce/sf-plugins-core';
-import World from '../../../src/commands/hello/world.js';
+import ServiceProcessDeploy from '../../../src/commands/service-process/deploy.js';
 
-describe('hello world', () => {
+describe('service-process deploy', () => {
   const $$ = new TestContext();
   let sfCommandStubs: ReturnType<typeof stubSfCommandUx>;
 
@@ -30,31 +30,26 @@ describe('hello world', () => {
     $$.restore();
   });
 
-  it('runs hello world', async () => {
-    await World.run([]);
+  it('runs hello', async () => {
+    await ServiceProcessDeploy.run([]);
     const output = sfCommandStubs.log
       .getCalls()
       .flatMap((c) => c.args)
       .join('\n');
-    expect(output).to.include('Hello World');
+    expect(output).to.include('hello world');
   });
 
-  it('runs hello world with --json and no provided name', async () => {
-    const result = await World.run([]);
-    expect(result.name).to.equal('World');
+  it('runs hello with --json and no provided name', async () => {
+    const result = await ServiceProcessDeploy.run([]);
+    expect(result.path).to.equal('src/commands/service-process/deploy.ts');
   });
 
   it('runs hello world --name Astro', async () => {
-    await World.run(['--name', 'Astro']);
+    await ServiceProcessDeploy.run(['--name', 'Astro']);
     const output = sfCommandStubs.log
       .getCalls()
       .flatMap((c) => c.args)
       .join('\n');
-    expect(output).to.include('Hello Astro');
-  });
-
-  it('runs hello world --name Astro --json', async () => {
-    const result = await World.run(['--name', 'Astro', '--json']);
-    expect(result.name).to.equal('Astro');
+    expect(output).to.include('hello Astro');
   });
 });
