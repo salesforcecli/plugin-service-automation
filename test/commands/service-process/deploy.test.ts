@@ -20,27 +20,34 @@ import ServiceProcessDeploy from '../../../src/commands/service-process/deploy.j
 
 describe('service-process deploy', () => {
   const $$ = new TestContext();
-  let sfCommandStubs: ReturnType<typeof stubSfCommandUx>;
 
   beforeEach(() => {
-    sfCommandStubs = stubSfCommandUx($$.SANDBOX);
+    stubSfCommandUx($$.SANDBOX);
   });
 
   afterEach(() => {
     $$.restore();
   });
 
-  it('runs deploy command', async () => {
-    await ServiceProcessDeploy.run(['--target-org', 'test@org.com', '--input-dir', './schemas']);
-    const output = sfCommandStubs.log
-      .getCalls()
-      .flatMap((c) => c.args)
-      .join('\n');
-    expect(output).to.include('hello world');
+  it('fails with clear error when input-dir has no flow files', async () => {
+    try {
+      await ServiceProcessDeploy.run(['--target-org', 'test@org.com', '--input-dir', './schemas']);
+      expect.fail('Expected command to throw');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      expect(message).to.include('No flow files found');
+      expect(message).to.include('templateData.json');
+      expect(message).to.include('.flow-meta.xml');
+    }
   });
 
-  it('runs deploy command with --json', async () => {
-    const result = await ServiceProcessDeploy.run(['--target-org', 'test@org.com', '--input-dir', './schemas']);
-    expect(result.path).to.equal('hello world');
+  it('fails with clear error when input-dir has no flow files (--json)', async () => {
+    try {
+      await ServiceProcessDeploy.run(['--target-org', 'test@org.com', '--input-dir', './schemas', '--json']);
+      expect.fail('Expected command to throw');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      expect(message).to.include('No flow files found');
+    }
   });
 });
