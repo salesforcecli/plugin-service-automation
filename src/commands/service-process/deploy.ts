@@ -16,6 +16,7 @@
 
 import { SfCommand, Flags } from '@salesforce/sf-plugins-core';
 import { Messages } from '@salesforce/core';
+import { deployServiceProcess } from '../../services/deployserviceprocess.js';
 
 Messages.importMessagesDirectoryFromMetaUrl(import.meta.url);
 const messages = Messages.loadMessages('@salesforce/plugin-service-automation', 'service-process.deploy');
@@ -43,9 +44,20 @@ export default class ServiceProcessDeploy extends SfCommand<ServiceProcessDeploy
   public async run(): Promise<ServiceProcessDeployResult> {
     const { flags } = await this.parse(ServiceProcessDeploy);
     const inputDir = flags['input-dir'];
-    this.log(`hello world , directory specified: ${inputDir}`);
-    return {
-      path: 'hello world',
-    };
+    const org = flags['target-org'];
+    const username = org.getUsername();
+    if (username) {
+      this.log(`Deploying to org: ${username}`);
+    }
+    this.log(`Input directory: ${inputDir}`);
+
+    await deployServiceProcess({
+      org: flags['target-org'],
+      inputDir,
+      logJson: this.logJson.bind(this),
+    });
+
+    this.log('Deploy completed successfully.');
+    return { path: inputDir };
   }
 }
