@@ -6,5 +6,13 @@
     "flagChars": ["o", "d"],
     "flags": ["flags-dir", "json", "target-org", "api-version", "input-dir"],
     "plugin": "@salesforce/plugin-service-automation"
+  },
+  {
+    "alias": [],
+    "command": "service-process:retrieve",
+    "flagAliases": [],
+    "flagChars": ["o", "d", "i"],
+    "flags": ["flags-dir", "json", "target-org", "output-dir", "service-process-id", "api-version"],
+    "plugin": "@salesforce/plugin-service-automation"
   }
 ]
