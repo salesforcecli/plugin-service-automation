@@ -45,10 +45,16 @@ export default class ServiceProcessDeploy extends SfCommand<ServiceProcessDeploy
       required: true,
       description: messages.getMessage('flags.input-zip.description'),
       parse: async (input: string): Promise<string> => {
-        if (!fs.existsSync(input)) {
-          throw new SfError(`Input zip file does not exist: ${input}`, 'InvalidInputPath');
+        let stat: fs.Stats;
+        try {
+          stat = await fs.promises.stat(input);
+        } catch (err) {
+          const code = (err as NodeJS.ErrnoException)?.code;
+          if (code === 'ENOENT') {
+            throw new SfError(`Input zip file does not exist: ${input}`, 'InvalidInputPath');
+          }
+          throw err;
         }
-        const stat = fs.statSync(input);
         if (!stat.isFile()) {
           throw new SfError(`Input must be a file, not a directory: ${input}`, 'InvalidNotFile');
         }
