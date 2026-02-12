@@ -34,6 +34,12 @@ export type CustomFieldRef = {
 /** Optional logger for JSON output (e.g. deploy response). Passed from command through service to validators/utils. */
 export type LogJsonFn = (data: unknown) => void;
 
+/** Optional logger: text and/or JSON. Pass from command through service; no console in library code. */
+export type Logger = {
+  log?: (msg: string) => void;
+  logJson?: LogJsonFn;
+};
+
 /**
  * Context passed into the validation layer. Validators read only; never mutate.
  */

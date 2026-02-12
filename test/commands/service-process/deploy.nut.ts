@@ -28,7 +28,7 @@ describe('service-process deploy NUTs', () => {
   });
 
   it('should display hello world', () => {
-    const command = 'service-process deploy --target-org test@org.com --input-dir ./schemas';
+    const command = 'service-process deploy --target-org test@org.com --input-zip ./schemas';
     const output = execCmd(command, { ensureExitCode: 0 }).shellOutput.stdout;
     expect(output).to.contain('hello world');
   });

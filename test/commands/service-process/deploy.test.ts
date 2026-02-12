@@ -13,9 +13,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import { TestContext } from '@salesforce/core/testSetup';
 import { expect } from 'chai';
 import { stubSfCommandUx } from '@salesforce/sf-plugins-core';
+import JSZip from 'jszip';
 import ServiceProcessDeploy from '../../../src/commands/service-process/deploy.js';
 
 describe('service-process deploy', () => {
@@ -29,25 +33,48 @@ describe('service-process deploy', () => {
     $$.restore();
   });
 
-  it('fails with clear error when input-dir has no flow files', async () => {
+  /** Create a zip containing only templateData.json (no flow files) for "no flow files" error tests. */
+  async function createZipWithNoFlows(): Promise<{ zipPath: string; cleanup: () => void }> {
+    const zip = new JSZip();
+    zip.file('templateData.json', JSON.stringify({ name: 'Test', targetObject: 'Case' }));
+    const buffer = await zip.generateAsync({ type: 'uint8array' });
+    const zipPath = path.join(os.tmpdir(), `deploy-test-no-flows-${Date.now()}.zip`);
+    fs.writeFileSync(zipPath, buffer);
+    const cleanup = (): void => {
+      try {
+        fs.unlinkSync(zipPath);
+      } catch {
+        // ignore
+      }
+    };
+    return { zipPath, cleanup };
+  }
+
+  it('fails with clear error when input-zip has no flow files', async () => {
+    const { zipPath, cleanup } = await createZipWithNoFlows();
     try {
-      await ServiceProcessDeploy.run(['--target-org', 'test@org.com', '--input-dir', './schemas']);
+      await ServiceProcessDeploy.run(['--target-org', 'test@org.com', '--input-zip', zipPath]);
       expect.fail('Expected command to throw');
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       expect(message).to.include('No flow files found');
       expect(message).to.include('templateData.json');
       expect(message).to.include('.flow-meta.xml');
+    } finally {
+      cleanup();
     }
   });
 
-  it('fails with clear error when input-dir has no flow files (--json)', async () => {
+  it('fails with clear error when input-zip has no flow files (--json)', async () => {
+    const { zipPath, cleanup } = await createZipWithNoFlows();
     try {
-      await ServiceProcessDeploy.run(['--target-org', 'test@org.com', '--input-dir', './schemas', '--json']);
+      await ServiceProcessDeploy.run(['--target-org', 'test@org.com', '--input-zip', zipPath, '--json']);
       expect.fail('Expected command to throw');
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       expect(message).to.include('No flow files found');
+    } finally {
+      cleanup();
     }
   });
 });

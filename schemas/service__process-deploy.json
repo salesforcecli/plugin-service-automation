@@ -5,8 +5,21 @@
     "ServiceProcessDeployResult": {
       "type": "object",
       "properties": {
-        "path": {
-          "type": "string"
+        "path": { "type": "string" },
+        "contentDocumentId": { "type": "string" },
+        "deployedFlows": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "fullName": { "type": "string" },
+              "definitionId": { "type": "string" }
+            },
+            "required": ["id", "fullName"],
+            "additionalProperties": false
+          },
+          "description": "Deployed flow id, name, and definitionId from Tooling API (when deployment succeeded)."
         }
       },
       "required": ["path"],

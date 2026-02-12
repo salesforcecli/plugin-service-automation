@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-export type { ValidationResult, ValidationContext, CustomFieldRef, Validator } from './types.js';
+export type { ValidationResult, ValidationContext, CustomFieldRef, Validator, Logger, LogJsonFn } from './types.js';
 export { runValidations, runValidationsOrThrow } from './ValidationRunner.js';
 export type { RunValidationsResult } from './ValidationRunner.js';
 export {

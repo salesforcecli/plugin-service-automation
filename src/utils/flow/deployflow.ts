@@ -27,24 +27,44 @@ export type DeployFlowsOptions = {
   logJson?: LogJsonFn;
 };
 
+/** Deployed flow id and name, from deploy result when checkOnly is false. definitionId from Tooling API when enriched. */
+export type DeployedFlowInfo = {
+  id: string;
+  fullName: string;
+  /** Flow definition Id from Tooling API FlowDefinition (when queried after deploy). */
+  definitionId?: string;
+};
+
+type ComponentSuccess = { componentType?: string; fullName?: string; id?: string };
+
+/**
+ * Extract flow id and fullName from deploy result details (only when checkOnly was false).
+ */
+function getDeployedFlowInfos(response: { details?: { componentSuccesses?: ComponentSuccess[] } }): DeployedFlowInfo[] {
+  const successes = response.details?.componentSuccesses;
+  if (!Array.isArray(successes)) return [];
+  return successes
+    .filter(
+      (c): c is ComponentSuccess & { id: string; fullName: string } =>
+        c.componentType === 'Flow' && typeof c.id === 'string' && typeof c.fullName === 'string'
+    )
+    .map((c) => ({ id: c.id, fullName: c.fullName }));
+}
+
 /**
  * Deploy multiple flow source files in a single SDR deployment.
  * filePaths should be absolute paths to *.flow-meta.xml files.
  * Use checkOnly: true to validate deployment without committing (e.g. to surface failures before actual deploy).
+ * When checkOnly is false and deployment succeeds, returns deployed flow ids and names; otherwise returns [].
  */
 export async function deployFlows(
   targetOrg: Org,
   filePaths: string[],
   options?: DeployFlowsOptions | LogJsonFn
-): Promise<void> {
+): Promise<DeployedFlowInfo[]> {
   const opts: DeployFlowsOptions =
     options === undefined ? {} : typeof options === 'function' ? { logJson: options } : options;
   const { checkOnly = false, logJson } = opts;
-
-  if (checkOnly === false) {
-    const msg = 'Exception now, will implement later.';
-    throw new Error(msg);
-  }
 
   if (filePaths.length === 0) {
     const msg = 'No flow files provided for deployment.';
@@ -82,6 +102,9 @@ export async function deployFlows(
     const msg = `Flow deployment failed: ${result.response.errorMessage ?? 'Unknown error'}`;
     throw new Error(msg);
   }
+
+  if (checkOnly) return [];
+  return getDeployedFlowInfos(result.response as { details?: { componentSuccesses?: ComponentSuccess[] } });
 }
 
 export async function deployflow(
@@ -89,11 +112,11 @@ export async function deployflow(
   flowName: string,
   inputDir: string,
   options?: DeployFlowsOptions | LogJsonFn
-): Promise<void> {
+): Promise<DeployedFlowInfo[]> {
   const flowFile = path.resolve(inputDir, `main/default/flows/${flowName}.flow-meta.xml`);
   if (!fs.existsSync(flowFile)) {
     const msg = `Flow file not found at ${flowFile}. Ensure the flow exists under ${inputDir}/main/default/flows/.`;
     throw new Error(msg);
   }
-  await deployFlows(targetOrg, [flowFile], options);
+  return deployFlows(targetOrg, [flowFile], options);
 }

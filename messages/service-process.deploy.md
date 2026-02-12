@@ -12,12 +12,16 @@ The command does not create missing prerequisites. Deployment failures
 caused by missing dependencies are surfaced. Supported metadata is
 Service Process Attributes, Intake flow, Fulfillment flow, Preprocessor.
 
-# flags.input-dir.summary
+# flags.input-zip.summary
 
-Path to retrieved Service Process directory.
+Path to a zip file containing metadata for deployment.
+
+# flags.input-zip.description
+
+Path to a zip file containing metadata for deployment.
 
 # examples
 
-- Deploy a Service Process located in "./service-process/Reclaim_Hardware" directory:
+- Deploy a Service Process from a zip file:
 
-  <%= config.bin %> <%= command.id %> -d ./service-process/Reclaim_Hardware -o prod
+  <%= config.bin %> <%= command.id %> -z ./service-process.zip -o prod
