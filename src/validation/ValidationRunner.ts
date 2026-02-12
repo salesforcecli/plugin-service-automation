@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+import { ValidationError } from '../errors.js';
 import type { ValidationContext, ValidationResult, Validator } from './types.js';
 
 export type RunValidationsResult = {
@@ -40,7 +41,7 @@ export async function runValidationsOrThrow(
   const { results, failures } = await runValidations(ctx, validators);
   if (failures.length > 0) {
     const message = failures.map((r) => `${r.name}: ${r.message ?? r.status}`).join('; ');
-    throw new Error(`Validation failed: ${message}`);
+    throw new ValidationError(`Validation failed: ${message}`);
   }
   return { results, failures };
 }

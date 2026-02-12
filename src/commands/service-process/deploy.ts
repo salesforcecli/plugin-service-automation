@@ -14,8 +14,11 @@
  * limitations under the License.
  */
 
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import { SfCommand, Flags } from '@salesforce/sf-plugins-core';
-import { Messages } from '@salesforce/core';
+import { Messages, SfError } from '@salesforce/core';
+import type { DeployError } from '../../errors.js';
 import { deployServiceProcess } from '../../services/deployserviceprocess.js';
 
 Messages.importMessagesDirectoryFromMetaUrl(import.meta.url);
@@ -23,6 +26,9 @@ const messages = Messages.loadMessages('@salesforce/plugin-service-automation', 
 
 export type ServiceProcessDeployResult = {
   path: string;
+  contentDocumentId?: string;
+  /** Deployed flow id, name, and definitionId from Tooling API (when deployment succeeded). */
+  deployedFlows?: Array<{ id: string; fullName: string; definitionId?: string }>;
 };
 
 export default class ServiceProcessDeploy extends SfCommand<ServiceProcessDeployResult> {
@@ -33,31 +39,73 @@ export default class ServiceProcessDeploy extends SfCommand<ServiceProcessDeploy
   public static readonly flags = {
     'target-org': Flags.requiredOrg(),
     'api-version': Flags.orgApiVersion(),
-    'input-dir': Flags.directory({
-      summary: messages.getMessage('flags.input-dir.summary'),
-      char: 'd',
+    'input-zip': Flags.string({
+      summary: messages.getMessage('flags.input-zip.summary'),
+      char: 'z',
       required: true,
-      exists: true,
+      description: messages.getMessage('flags.input-zip.description'),
+      parse: async (input: string): Promise<string> => {
+        if (!fs.existsSync(input)) {
+          throw new SfError(`Input zip file does not exist: ${input}`, 'InvalidInputPath');
+        }
+        const stat = fs.statSync(input);
+        if (!stat.isFile()) {
+          throw new SfError(`Input must be a file, not a directory: ${input}`, 'InvalidNotFile');
+        }
+        if (path.extname(input).toLowerCase() !== '.zip') {
+          throw new SfError(`Input file must have a .zip extension: ${input}`, 'InvalidFileType');
+        }
+        return input;
+      },
     }),
   };
 
   public async run(): Promise<ServiceProcessDeployResult> {
     const { flags } = await this.parse(ServiceProcessDeploy);
-    const inputDir = flags['input-dir'];
+    const inputZipRaw = flags['input-zip'];
+    const inputZip = typeof inputZipRaw === 'string' ? inputZipRaw : inputZipRaw?.[0];
+    if (inputZip == null || inputZip === '') {
+      throw new SfError('Required flag input-zip is missing.', 'MissingRequiredFlag');
+    }
     const org = flags['target-org'];
     const username = org.getUsername();
     if (username) {
       this.log(`Deploying to org: ${username}`);
     }
-    this.log(`Input directory: ${inputDir}`);
+    this.log(`Input zip file: ${inputZip}`);
 
-    await deployServiceProcess({
-      org: flags['target-org'],
-      inputDir,
-      logJson: this.logJson.bind(this),
-    });
+    let result;
+    try {
+      result = await deployServiceProcess({
+        org: flags['target-org'],
+        inputZip,
+        logger: {
+          log: (msg: string) => this.log(msg),
+          logJson: this.logJson.bind(this),
+        },
+      });
+    } catch (err) {
+      const deployErr = err as DeployError;
+      if (deployErr?.code) {
+        throw new SfError(deployErr.message, deployErr.code);
+      }
+      throw err;
+    }
 
     this.log('Deploy completed successfully.');
-    return { path: inputDir };
+    if (result.contentDocumentId) {
+      this.log(`Content Document ID: ${result.contentDocumentId}`);
+    }
+    if (result.deployedFlows?.length) {
+      for (const f of result.deployedFlows) {
+        const defId = f.definitionId ? ` (definitionId: ${f.definitionId})` : '';
+        this.log(`${f.id} for ${f.fullName}${defId}`);
+      }
+    }
+    return {
+      path: inputZip,
+      contentDocumentId: result.contentDocumentId,
+      deployedFlows: result.deployedFlows,
+    };
   }
 }

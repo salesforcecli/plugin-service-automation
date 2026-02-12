@@ -43,7 +43,10 @@ export const apexClassPresenceValidator: Validator = {
           message: `Apex classes not found in org: ${missing.join(', ')}`,
         };
       }
-      return { name: NAME, status: 'PASS', message: `All ${classNames.length} Apex class(es) present` };
+      const passMessage = `All ${classNames.length} Apex class(es) present`;
+      // eslint-disable-next-line no-console
+      console.log(passMessage, classNames);
+      return { name: NAME, status: 'PASS', message: passMessage };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       return { name: NAME, status: 'FAIL', message: `Error: ${message}` };

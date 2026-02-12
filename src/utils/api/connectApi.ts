@@ -15,29 +15,23 @@
  */
 
 import { Connection } from '@salesforce/core';
+import got from 'got';
 
 type HttpMethod = 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE';
-type RequestBody = string | Buffer;
 
-function buildConnectUrl(path: string, apiVersion: string): string {
-  // Absolute path already fully qualified
-  if (path.startsWith('/services/data/')) {
-    return path;
-  }
-
-  // Starts with /connect
-  if (path.startsWith('/connect/')) {
-    return `/services/data/v${apiVersion}${path}`;
-  }
-
-  // Generic path cases
-  if (path.startsWith('/')) {
-    return `/services/data/v${apiVersion}/connect${path}`;
-  }
-
-  return `/services/data/v${apiVersion}/connect/${path}`;
+/**
+ * Build the Connect API path. Callers must pass only the resource path under Connect
+ * (e.g. 'appointments' or 'appointments/123'); leading slash is optional.
+ */
+function buildConnectPath(path: string, apiVersion: string): string {
+  const normalizedPath = path.startsWith('/') ? path.slice(1) : path;
+  return `/services/data/v${apiVersion}/connect/${normalizedPath}`;
 }
 
+/**
+ * Request the Connect API. path must be the resource path under Connect only
+ * (e.g. 'appointments' or 'appointments/123'); the utility prepends /services/data/v{version}/connect/.
+ */
 export async function requestConnectApi<T = unknown>(
   connection: Connection,
   path: string,
@@ -49,34 +43,37 @@ export async function requestConnectApi<T = unknown>(
   }
 ): Promise<T> {
   const apiVersion = options?.apiVersion ?? connection.getApiVersion();
-  const url = buildConnectUrl(path, apiVersion);
+  const relativePath = buildConnectPath(path, apiVersion);
+  const url = connection.normalizeUrl(relativePath);
   const method = options?.method ?? 'GET';
 
+  const { accessToken } = connection.getConnectionOptions();
+  if (!accessToken) {
+    throw new Error('Connection missing accessToken');
+  }
+
   const headers: Record<string, string> = {
+    Authorization: `Bearer ${accessToken}`,
     'Content-Type': 'application/json',
     ...(options?.headers ?? {}),
   };
 
-  let requestBody: RequestBody | undefined;
-  if (method !== 'GET') {
-    if (options?.body === undefined) {
-      requestBody = undefined;
-    } else if (typeof options.body === 'string' || Buffer.isBuffer(options.body)) {
-      requestBody = options.body;
+  const gotOptions: {
+    method: HttpMethod;
+    headers: Record<string, string>;
+    body?: string | Buffer;
+    json?: Record<string, unknown>;
+  } = { method, headers };
+
+  if (method !== 'GET' && options?.body !== undefined) {
+    if (typeof options.body === 'string' || Buffer.isBuffer(options.body)) {
+      gotOptions.body = options.body;
     } else {
-      requestBody = JSON.stringify(options.body);
+      gotOptions.json = options.body as Record<string, unknown>;
     }
   }
 
-  // Connection.request will inject Authorization automatically
-  const response = await connection.request<T>({
-    method,
-    url,
-    headers,
-    // Only include body for non-GET to avoid issues on some endpoints
-    body: requestBody,
-  });
-
+  const response = await got(url, gotOptions).json<T>();
   return response;
 }
 

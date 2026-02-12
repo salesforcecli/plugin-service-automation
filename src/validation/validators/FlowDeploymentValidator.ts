@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { deployFlows } from '../../utils/deployflow.js';
+import { deployFlows } from '../../utils/flow/deployflow.js';
 import type { ValidationContext, ValidationResult, Validator } from '../types.js';
 
 const NAME = 'FlowDeploymentValidator';

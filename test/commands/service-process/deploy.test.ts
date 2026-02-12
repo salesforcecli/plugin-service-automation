@@ -29,9 +29,9 @@ describe('service-process deploy', () => {
     $$.restore();
   });
 
-  it('fails with clear error when input-dir has no flow files', async () => {
+  it('fails with clear error when input-zip has no flow files', async () => {
     try {
-      await ServiceProcessDeploy.run(['--target-org', 'test@org.com', '--input-dir', './schemas']);
+      await ServiceProcessDeploy.run(['--target-org', 'test@org.com', '--input-zip', './schemas']);
       expect.fail('Expected command to throw');
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -41,9 +41,9 @@ describe('service-process deploy', () => {
     }
   });
 
-  it('fails with clear error when input-dir has no flow files (--json)', async () => {
+  it('fails with clear error when input-zip has no flow files (--json)', async () => {
     try {
-      await ServiceProcessDeploy.run(['--target-org', 'test@org.com', '--input-dir', './schemas', '--json']);
+      await ServiceProcessDeploy.run(['--target-org', 'test@org.com', '--input-zip', './schemas', '--json']);
       expect.fail('Expected command to throw');
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
