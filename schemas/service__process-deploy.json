@@ -15,8 +15,11 @@
               "id": { "type": "string" },
               "fullName": { "type": "string" },
               "definitionId": { "type": "string" }
-            }
-          }
+            },
+            "required": ["id", "fullName"],
+            "additionalProperties": false
+          },
+          "description": "Deployed flow id, name, and definitionId from Tooling API (when deployment succeeded)."
         }
       },
       "required": ["path"],
