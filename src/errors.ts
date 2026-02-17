@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+import { SfError } from '@salesforce/core';
+
 /** Base for deploy/validation domain errors; command can map to SfError with exit codes. */
 export class DeployError extends Error {
   public readonly code: string;
@@ -38,5 +40,23 @@ export class TemplateDataError extends DeployError {
   public constructor(message: string) {
     super(message, 'InvalidTemplateData');
     this.name = 'TemplateDataError';
+  }
+}
+
+export class ServiceProcessRetrieveError extends SfError {
+  public constructor(message: string, name: string = 'ServiceProcessRetrieveError') {
+    super(message, name);
+  }
+}
+
+export class ServiceProcessRetrieveValidationError extends ServiceProcessRetrieveError {
+  public constructor(message: string) {
+    super(message, 'ValidationError');
+  }
+}
+
+export class ServiceProcessDataRetrievalFailure extends ServiceProcessRetrieveError {
+  public constructor(message: string) {
+    super(message, 'ServiceProcessDataRetrievalFailure');
   }
 }
