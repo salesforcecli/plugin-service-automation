@@ -16,22 +16,25 @@
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import type { Connection, Org } from '@salesforce/core';
-import { buildCatalogItemPath, CONNECT_TEMPLATE_DEPLOY_PATH_PREFIX } from '../constants.js';
-import { TemplateDataError } from '../errors.js';
-import { patchConnect, postConnect } from '../utils/api/connectApi.js';
-import { ContentDocumentUtil } from '../utils/api/contentDocument.js';
-import { deployFlows, type DeployedFlowInfo } from '../utils/flow/deployflow.js';
+import type { Org } from '@salesforce/core';
+import { DeployError, TemplateDataError } from '../errors.js';
+import { type DeployedFlowInfo } from '../utils/flow/deployflow.js';
 import { getFlowDefinitionIds } from '../utils/flow/flowTooling.js';
 import { createZipFromWorkspace, extractZipToWorkspace } from '../workspace/deployWorkspace.js';
 import { resolveFlowFilePath } from '../workspace/flowPath.js';
-import { FlowTransformer, type FlowTransformerResult } from '../workspace/flowTransformer.js';
 import { deriveFlowsAndTemplateData } from '../workspace/templateData.js';
-import { ServiceProcessTransformer, type DeployedFlowNames } from '../workspace/serviceProcessTransformer.js';
+import type { DeployedFlowNames } from '../workspace/serviceProcessTransformer.js';
 import { runValidationsOrThrow, builtInValidators } from '../validation/index.js';
 import type { LogJsonFn, Logger, ValidationContext } from '../validation/types.js';
+import {
+  resolveDeployDependencies,
+  type DeployServiceProcessDependencies,
+  type ResolvedDeployDependencies,
+} from './deployDependencies.js';
+import { patchCatalogItemWithFlowIds } from './catalogItemPatch.js';
 
 export type { DeployedFlowNames, FlowNameTracking } from '../workspace/serviceProcessTransformer.js';
+export type { DeployServiceProcessDependencies } from './deployDependencies.js';
 
 export type DeployServiceProcessResult = {
   contentDocumentId?: string;
@@ -40,87 +43,28 @@ export type DeployServiceProcessResult = {
   deployedFlows?: DeployedFlowInfo[];
 };
 
-/** Injected dependencies for testing; defaults to real implementations. */
-export type DeployServiceProcessDeps = {
-  serviceProcessTransform?: (workspacePath: string) => DeployedFlowNames;
-  flowTransformer?: (
-    flowFilePath: string,
-    targetServiceProcessId: string,
-    serviceProcessName?: string,
-    logger?: Logger
-  ) => FlowTransformerResult;
-  uploadZip?: (conn: Connection, zipPath: string) => Promise<{ contentDocumentId: string }>;
-  callTemplateDeploy?: (
-    conn: Connection,
-    contentDocumentId: string
-  ) => Promise<{ deploymentResult?: string; status?: string; templateId?: string }>;
-  deployFlowsFn?: (
-    org: Org,
-    filePaths: string[],
-    options: { checkOnly: boolean; logJson?: LogJsonFn }
-  ) => Promise<DeployedFlowInfo[]>;
-};
-
-/** Build catalog item PATCH body with intakeFormId and fulfillmentFlowId from deployed flow definition ids. */
-function buildCatalogItemPatchBody(
-  intakeFormDefinitionId: string | undefined,
-  fulfillmentFlowDefinitionId: string | undefined
-): Record<string, unknown> {
-  return {
-    agentAction: {},
-    associatedArticles: [],
-    sections: [],
-    eligibilityRules: [],
-    fulfillmentFlow:
-      fulfillmentFlowDefinitionId != null
-        ? { fulfillmentFlowId: fulfillmentFlowDefinitionId, type: 'Flow', operationType: 'Create' }
-        : {},
-    intakeForm:
-      intakeFormDefinitionId != null
-        ? { operationType: 'Create', intakeFormId: intakeFormDefinitionId, type: 'Flow' }
-        : {},
-    integrations: [],
-    isActive: false,
-    name: '',
-    preProcessors: [],
-    productRequests: [],
-    targetObject: 'Case',
-    usedFor: 'ServiceProcess',
-  };
-}
-
-/**
- * Patch the service-automation catalog item with deployed flow definition ids for intake and fulfillment.
- */
-async function patchCatalogItemWithFlowIds(
-  conn: Connection,
-  targetServiceProcessId: string,
-  deployedFlows: DeployedFlowInfo[],
+function runIntakeFormFlowTransform(
+  workspace: string,
+  targetServiceProcessId: string | undefined,
   deployedFlowNames: DeployedFlowNames | undefined,
+  templateDataExtract: { name?: string },
+  flowTransformFn: ResolvedDeployDependencies['flowTransformFn'],
   logger?: Logger
-): Promise<void> {
-  const fullNameToDefId = new Map(
-    deployedFlows
-      .filter((f): f is typeof f & { definitionId: string } => f.definitionId != null)
-      .map((f) => [f.fullName, f.definitionId] as const)
+): void {
+  if (!targetServiceProcessId || !deployedFlowNames?.intakeForm) {
+    logger?.log?.(
+      '[deployServiceProcess] Skipping flow transformer (no targetServiceProcessId or no intakeForm in deployedFlowNames)'
+    );
+    return;
+  }
+  const intakeFormFlowPath = resolveFlowFilePath(workspace, deployedFlowNames.intakeForm.originalName);
+  logger?.log?.(
+    `[deployServiceProcess] Calling FlowTransformer.transformIntakeFormFlow: ${intakeFormFlowPath} ${targetServiceProcessId}`
   );
-  const intakeFormDefinitionId = deployedFlowNames?.intakeForm
-    ? fullNameToDefId.get(deployedFlowNames.intakeForm.originalName)
-    : undefined;
-  const fulfillmentFlowDefinitionId = deployedFlowNames?.fulfillmentFlow
-    ? fullNameToDefId.get(deployedFlowNames.fulfillmentFlow.originalName)
-    : undefined;
-
-  const catalogItemBody = buildCatalogItemPatchBody(intakeFormDefinitionId, fulfillmentFlowDefinitionId);
-  const catalogItemPath = buildCatalogItemPath(targetServiceProcessId);
-
-  logger?.log?.(`Patching catalog item: ${catalogItemPath}`);
-  logger?.log?.('Request body:');
-  logger?.logJson?.(catalogItemBody);
-  const patchResponse = await patchConnect(conn, catalogItemPath, catalogItemBody);
-  logger?.log?.('Patch response:');
-  logger?.logJson?.(patchResponse);
-  logger?.log?.('Catalog item patched successfully.');
+  const transformResult = flowTransformFn(intakeFormFlowPath, targetServiceProcessId, templateDataExtract.name, logger);
+  if (transformResult.modified) {
+    logger?.log?.(`Flow transformer: ${transformResult.message}`);
+  }
 }
 
 /**
@@ -132,48 +76,16 @@ export async function deployServiceProcess(options: {
   inputZip: string;
   logger?: Logger;
   logJson?: LogJsonFn;
-  deps?: DeployServiceProcessDeps;
+  dependencies?: DeployServiceProcessDependencies;
 }): Promise<DeployServiceProcessResult> {
-  const { org, inputZip, logger, deps = {} } = options;
+  const { org, inputZip, logger, dependencies = {} } = options;
   const logJson = options.logJson ?? logger?.logJson;
+  const resolved = resolveDeployDependencies(dependencies);
 
   logger?.log?.(`inputZip (resolved): ${path.resolve(inputZip)}`);
 
   const { workspace, cleanup } = await extractZipToWorkspace(inputZip);
   let workspaceZipCleanup: (() => void) | undefined;
-
-  const serviceProcessTransformFn =
-    deps.serviceProcessTransform ??
-    ((workspacePath: string): DeployedFlowNames => ServiceProcessTransformer.transform(workspacePath));
-  const flowTransformFn =
-    deps.flowTransformer ??
-    ((
-      flowFilePath: string,
-      targetServiceProcessId: string,
-      serviceProcessName?: string,
-      loggerArg?: Logger
-    ): FlowTransformerResult =>
-      FlowTransformer.transformIntakeFormFlow(flowFilePath, targetServiceProcessId, serviceProcessName, loggerArg));
-  const uploadZipFn =
-    deps.uploadZip ??
-    (async (conn: Connection, zipPath: string): Promise<{ contentDocumentId: string }> => {
-      const r = await ContentDocumentUtil.createFromFile(conn, zipPath);
-      return { contentDocumentId: r.contentDocumentId };
-    });
-  const callTemplateDeployFn =
-    deps.callTemplateDeploy ??
-    (async (
-      conn: Connection,
-      contentDocumentId: string
-    ): Promise<{ deploymentResult?: string; status?: string; templateId?: string }> => {
-      const deployPath = `${CONNECT_TEMPLATE_DEPLOY_PATH_PREFIX}/${contentDocumentId}`;
-      return postConnect<{
-        deploymentResult?: string;
-        status?: string;
-        templateId?: string;
-      }>(conn, deployPath, {});
-    });
-  const deployFlowsFn = deps.deployFlowsFn ?? deployFlows;
 
   try {
     const { filePaths, templateDataExtract } = deriveFlowsAndTemplateData(workspace);
@@ -198,18 +110,26 @@ export async function deployServiceProcess(options: {
     };
     await runValidationsOrThrow(validationContext, builtInValidators);
 
-    const deployedFlowNames = serviceProcessTransformFn(workspace);
+    const deployedFlowNames = resolved.serviceProcessTransformFn(workspace);
 
     const { zipPath: workspaceZipPath, cleanup: cleanupWorkspaceZip } = await createZipFromWorkspace(workspace);
     workspaceZipCleanup = cleanupWorkspaceZip;
 
     const conn = org.getConnection();
-    const uploadResult = await uploadZipFn(conn, workspaceZipPath);
+    const uploadResult = await resolved.uploadZipFn(conn, workspaceZipPath);
     const contentDocumentId = uploadResult.contentDocumentId;
     logger?.log?.(`Content Document ID: ${contentDocumentId}`);
 
-    const templateDeployResponse = await callTemplateDeployFn(conn, contentDocumentId);
+    const templateDeployResponse = await resolved.callTemplateDeployFn(conn, contentDocumentId);
     logger?.logJson?.(templateDeployResponse);
+
+    if (templateDeployResponse?.status === 'FAILURE') {
+      const message =
+        typeof templateDeployResponse === 'object' && templateDeployResponse !== null
+          ? `Template deploy failed: ${JSON.stringify(templateDeployResponse)}`
+          : 'Template deploy failed.';
+      throw new DeployError(message, 'TemplateDeployFailed');
+    }
 
     const targetServiceProcessId = templateDeployResponse?.deploymentResult;
     logger?.log?.(
@@ -217,27 +137,16 @@ export async function deployServiceProcess(options: {
         targetServiceProcessId
       )}, intakeForm=${deployedFlowNames?.intakeForm != null ? 'set' : 'none'}`
     );
-    if (targetServiceProcessId && deployedFlowNames?.intakeForm) {
-      const intakeFormFlowPath = resolveFlowFilePath(workspace, deployedFlowNames.intakeForm.originalName);
-      logger?.log?.(
-        `[deployServiceProcess] Calling FlowTransformer.transformIntakeFormFlow: ${intakeFormFlowPath} ${targetServiceProcessId}`
-      );
-      const transformResult = flowTransformFn(
-        intakeFormFlowPath,
-        targetServiceProcessId,
-        templateDataExtract.name,
-        logger
-      );
-      if (transformResult.modified) {
-        logger?.log?.(`Flow transformer: ${transformResult.message}`);
-      }
-    } else {
-      logger?.log?.(
-        '[deployServiceProcess] Skipping flow transformer (no targetServiceProcessId or no intakeForm in deployedFlowNames)'
-      );
-    }
+    runIntakeFormFlowTransform(
+      workspace,
+      targetServiceProcessId,
+      deployedFlowNames,
+      templateDataExtract,
+      resolved.flowTransformFn,
+      logger
+    );
 
-    const deployedFlows = await deployFlowsFn(org, filePaths, { checkOnly: false, logJson });
+    const deployedFlows = await resolved.deployFlowsFn(org, filePaths, { checkOnly: false, logJson });
 
     if (deployedFlows.length > 0) {
       const connection = org.getConnection();
@@ -251,7 +160,6 @@ export async function deployServiceProcess(options: {
         const defId = f.definitionId ?? '(not found)';
         logger?.log?.(`  ${f.fullName}: id=${f.id}, definitionId=${defId}`);
       }
-
       if (targetServiceProcessId) {
         await patchCatalogItemWithFlowIds(connection, targetServiceProcessId, deployedFlows, deployedFlowNames, logger);
       }
