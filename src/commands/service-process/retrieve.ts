@@ -16,29 +16,15 @@
 
 import { resolve } from 'node:path';
 import { SfCommand, Flags } from '@salesforce/sf-plugins-core';
-import { Messages, Connection, Org } from '@salesforce/core';
+import { Messages, Org } from '@salesforce/core';
 import { retrieveServiceProcess } from '../../services/retrieveServiceProcessService.js';
+import { ServiceProcessRetrieveRequest, OrgMetadata } from '../../types/types.js';
 
 Messages.importMessagesDirectoryFromMetaUrl(import.meta.url);
 const messages = Messages.loadMessages('@salesforce/plugin-service-automation', 'service-process.retrieve');
 
 export type ServiceProcessRetrieveResult = {
   path: string;
-};
-
-type OrgMetadata = {
-  orgInstanceUrl: string;
-  orgId: string;
-  apiVersion: string;
-};
-
-type ServiceProcessRetrieveRequest = {
-  serviceProcessId: string;
-  outputDir: string;
-  org: Org;
-  apiVersion: string | undefined;
-  connection: Connection;
-  orgMetadata: OrgMetadata;
 };
 
 export default class ServiceProcessRetrieve extends SfCommand<ServiceProcessRetrieveResult> {
