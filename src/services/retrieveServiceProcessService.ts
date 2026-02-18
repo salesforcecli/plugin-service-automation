@@ -1,0 +1,190 @@
+/*
+ * Copyright 2026, Salesforce, Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { existsSync } from 'node:fs';
+import { Connection } from '@salesforce/core';
+import { ComponentSet } from '@salesforce/source-deploy-retrieve';
+import JSZip from 'jszip';
+import { ServiceProcessDataRetrievalFailure } from '../errors.js';
+import { validateRequest } from '../validation/validators/retrieveServiceProcessRequestValidator.js';
+import { ServiceProcessRetrieveRequest } from '../types/types.js';
+import {
+  createZipFile,
+  createTemporaryDirectory,
+  removeTemporaryDirectory,
+  ensureDirectoryExists,
+} from './fileSystemService.js';
+
+export async function retrieveServiceProcessDetails(
+  serviceProcessId: string,
+  connection: Connection,
+  apiVersion?: string
+): Promise<Record<string, unknown>> {
+  const url = apiVersion
+    ? `/services/data/v${apiVersion}/connect/service-automation/service-process/${serviceProcessId}`
+    : `/connect/service-automation/service-process/${serviceProcessId}`;
+
+  try {
+    const serviceProcessData = await connection.requestGet<Record<string, unknown>>(url);
+    return serviceProcessData;
+  } catch (error) {
+    throw new ServiceProcessDataRetrievalFailure(
+      `Failed to retrieve service process data from the org for service process ID '${serviceProcessId}'. Please try again.`
+    );
+  }
+}
+
+export async function extractServiceProcessDependencies(
+  serviceProcessData: Record<string, unknown>,
+  connection: Connection,
+  outputDir: string
+): Promise<Record<string, unknown>> {
+  const serviceProcessDeps: Record<string, unknown> = {};
+
+  const intakeForm = serviceProcessData.intakeForm as Record<string, unknown> | undefined;
+  const fulfillmentFlow = serviceProcessData.fulfillmentFlow as Record<string, unknown> | undefined;
+
+  const flowApiNames: string[] = [];
+
+  if (intakeForm) {
+    const intakeFormApiName = intakeForm.apiName as string | undefined;
+    const intakeFormNamespacePrefix = intakeForm.namespacePrefix as string | undefined;
+
+    if (intakeFormApiName && !intakeFormNamespacePrefix) {
+      flowApiNames.push(intakeFormApiName);
+    }
+  }
+
+  if (fulfillmentFlow) {
+    const fulfillmentFlowApiName = fulfillmentFlow.apiName as string | undefined;
+    const fulfillmentFlowNamespacePrefix = fulfillmentFlow.namespacePrefix as string | undefined;
+
+    if (fulfillmentFlowApiName && !fulfillmentFlowNamespacePrefix) {
+      flowApiNames.push(fulfillmentFlowApiName);
+    }
+  }
+
+  if (flowApiNames.length > 0) {
+    const flowMetadata = await fetchFlows(flowApiNames, connection, outputDir);
+
+    for (const flow of flowMetadata) {
+      if (intakeForm && flow.apiName === (intakeForm.apiName as string)) {
+        serviceProcessDeps.intakeForm = flow.xmlContent;
+      }
+      if (fulfillmentFlow && flow.apiName === (fulfillmentFlow.apiName as string)) {
+        serviceProcessDeps.fulfillmentForm = flow.xmlContent;
+      }
+    }
+  }
+
+  return serviceProcessDeps;
+}
+
+export async function fetchFlows(
+  flowApiNames: string[],
+  connection: Connection,
+  outputDir: string
+): Promise<Array<{ apiName: string; xmlContent: string }>> {
+  if (!flowApiNames || flowApiNames.length === 0) {
+    return [];
+  }
+
+  const tempRetrieveDir = join(outputDir, '.temp');
+  await createTemporaryDirectory(tempRetrieveDir);
+
+  try {
+    const components = flowApiNames.map((apiName) => ({
+      fullName: apiName,
+      type: 'Flow',
+    }));
+    const componentSet = new ComponentSet(components);
+    const retrieveResult = await componentSet.retrieve({
+      usernameOrConnection: connection,
+      output: tempRetrieveDir,
+      merge: true,
+    });
+    await retrieveResult.pollStatus();
+
+    const flowMetadata: Array<{ apiName: string; xmlContent: string }> = [];
+
+    for (const apiName of flowApiNames) {
+      const flowXmlPath = join(tempRetrieveDir, 'main', 'default', 'flows', `${apiName}.flow-meta.xml`);
+
+      if (existsSync(flowXmlPath)) {
+        // eslint-disable-next-line no-await-in-loop
+        const xmlContent = await readFile(flowXmlPath, 'utf-8');
+        flowMetadata.push({ apiName, xmlContent });
+      } else {
+        throw new Error(`Flow XML file not found for '${apiName}' at: ${flowXmlPath}`);
+      }
+    }
+    return flowMetadata;
+  } catch (error) {
+    throw new Error(`Failed to fetch flow metadata: ${error instanceof Error ? error.message : String(error)}`);
+  } finally {
+    await removeTemporaryDirectory(tempRetrieveDir, true);
+  }
+}
+
+export async function generateZippedArtifacts(
+  request: ServiceProcessRetrieveRequest,
+  serviceProcessData: Record<string, unknown>,
+  serviceProcessDeps: Record<string, unknown>
+): Promise<void> {
+  const zipFileName = `${request.serviceProcessId}.zip`;
+  const zipFilePath = join(request.outputDir, zipFileName);
+
+  const serviceProcessJson = JSON.stringify(serviceProcessData, null, 2);
+  const orgMetadataJson = JSON.stringify(request.orgMetadata, null, 2);
+
+  const zip = new JSZip();
+  zip.file('service-process.json', serviceProcessJson);
+  zip.file('org-metadata.json', orgMetadataJson);
+
+  const flowMetadataFolder = zip.folder('metadata')?.folder('flows');
+
+  if (serviceProcessDeps.intakeForm) {
+    const intakeForm = serviceProcessDeps.intakeForm;
+    const intakeFormXmlContent = intakeForm as string;
+    flowMetadataFolder?.file('intake.flow-meta.xml', intakeFormXmlContent);
+  }
+
+  if (serviceProcessDeps.fulfillmentForm) {
+    const fulfillmentForm = serviceProcessDeps.fulfillmentForm;
+    const fulfillmentFormXmlContent = fulfillmentForm as string;
+    flowMetadataFolder?.file('fulfillment.flow-meta.xml', fulfillmentFormXmlContent);
+  }
+
+  await createZipFile(zipFilePath, zip);
+}
+
+export async function retrieveServiceProcess(request: ServiceProcessRetrieveRequest): Promise<void> {
+  await validateRequest(request);
+  const serviceProcessData = await retrieveServiceProcessDetails(
+    request.serviceProcessId,
+    request.connection,
+    request.apiVersion
+  );
+  const serviceProcessDeps = await extractServiceProcessDependencies(
+    serviceProcessData,
+    request.connection,
+    request.outputDir
+  );
+  await ensureDirectoryExists(request.outputDir);
+  await generateZippedArtifacts(request, serviceProcessData, serviceProcessDeps);
+}
