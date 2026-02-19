@@ -19,7 +19,7 @@ import * as path from 'node:path';
 import { SfCommand, Flags } from '@salesforce/sf-plugins-core';
 import { Messages, SfError } from '@salesforce/core';
 import type { DeployError } from '../../errors.js';
-import { deployServiceProcess } from '../../services/deployserviceprocess.js';
+import { DeployService } from '../../services/deployserviceprocess.js';
 
 Messages.importMessagesDirectoryFromMetaUrl(import.meta.url);
 const messages = Messages.loadMessages('@salesforce/plugin-service-automation', 'service-process.deploy');
@@ -82,14 +82,14 @@ export default class ServiceProcessDeploy extends SfCommand<ServiceProcessDeploy
 
     let result;
     try {
-      result = await deployServiceProcess({
+      const deployService = new DeployService({
         org: flags['target-org'],
-        inputZip,
         logger: {
           log: (msg: string) => this.log(msg),
           logJson: this.logJson.bind(this),
         },
       });
+      result = await deployService.deploy(inputZip);
     } catch (err) {
       const deployErr = err as DeployError;
       if (deployErr?.code) {

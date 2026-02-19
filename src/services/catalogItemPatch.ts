@@ -23,94 +23,96 @@ import type { Logger } from '../validation/types.js';
 
 export type CatalogItemGetResponse = { intakeForm?: { id?: string }; contextDefinitionDevNameOrId?: string };
 
-/** Build catalog item PATCH body with intakeFormId and fulfillmentFlowId from deployed flow definition ids. */
-export function buildCatalogItemPatchBody(
-  intakeFormDefinitionId: string | undefined,
-  fulfillmentFlowDefinitionId: string | undefined,
-  existingIntakeFormId: string | undefined,
-  contextDefinitionDevNameOrId: string | undefined
-): Record<string, unknown> {
-  const intakeForm =
-    intakeFormDefinitionId != null
-      ? existingIntakeFormId != null
-        ? {
-            operationType: 'Update' as const,
-            id: existingIntakeFormId,
-            intakeFormId: intakeFormDefinitionId,
-            type: 'Flow' as const,
-          }
-        : { operationType: 'Create' as const, intakeFormId: intakeFormDefinitionId, type: 'Flow' as const }
-      : {};
-  const body: Record<string, unknown> = {
-    agentAction: {},
-    associatedArticles: [],
-    sections: [],
-    eligibilityRules: [],
-    fulfillmentFlow:
-      fulfillmentFlowDefinitionId != null
-        ? { fulfillmentFlowId: fulfillmentFlowDefinitionId, type: 'Flow', operationType: 'Create' }
-        : {},
-    intakeForm,
-    integrations: [],
-    isActive: false,
-    name: '',
-    preProcessors: [],
-    productRequests: [],
-    targetObject: 'Case',
-    usedFor: 'ServiceProcess',
-  };
-  if (contextDefinitionDevNameOrId != null) {
-    body.contextDefinitionDevNameOrId = contextDefinitionDevNameOrId;
-  }
-  return body;
-}
-
-/**
- * Patch the service-automation catalog item with deployed flow definition ids for intake and fulfillment.
- */
-export async function patchCatalogItemWithFlowIds(
-  conn: Connection,
-  targetServiceProcessId: string,
-  deployedFlows: DeployedFlowInfo[],
-  deployedFlowNames: DeployedFlowNames | undefined,
-  logger?: Logger
-): Promise<void> {
-  const fullNameToDefId = new Map(
-    deployedFlows
-      .filter((f): f is typeof f & { definitionId: string } => f.definitionId != null)
-      .map((f) => [f.fullName, f.definitionId] as const)
-  );
-  const intakeFormDefinitionId = deployedFlowNames?.intakeForm
-    ? fullNameToDefId.get(deployedFlowNames.intakeForm.originalName)
-    : undefined;
-  const fulfillmentFlowDefinitionId = deployedFlowNames?.fulfillmentFlow
-    ? fullNameToDefId.get(deployedFlowNames.fulfillmentFlow.originalName)
-    : undefined;
-
-  const catalogItemPath = buildCatalogItemPath(targetServiceProcessId);
-
-  const catalogItem = await getConnect<CatalogItemGetResponse>(conn, catalogItemPath);
-  const existingIntakeFormId = catalogItem?.intakeForm?.id;
-  const contextDefinitionDevNameOrId = catalogItem?.contextDefinitionDevNameOrId;
-  if (existingIntakeFormId) {
-    logger?.log?.(`Fetched catalog item intakeForm.id: ${existingIntakeFormId}`);
-  }
-  if (contextDefinitionDevNameOrId) {
-    logger?.log?.(`Fetched catalog item contextDefinitionDevNameOrId: ${contextDefinitionDevNameOrId}`);
+export class CatalogItemPatcher {
+  /** Build catalog item PATCH body with intakeFormId and fulfillmentFlowId from deployed flow definition ids. */
+  public static buildCatalogItemPatchBody(
+    intakeFormDefinitionId: string | undefined,
+    fulfillmentFlowDefinitionId: string | undefined,
+    existingIntakeFormId: string | undefined,
+    contextDefinitionDevNameOrId: string | undefined
+  ): Record<string, unknown> {
+    const intakeForm =
+      intakeFormDefinitionId != null
+        ? existingIntakeFormId != null
+          ? {
+              operationType: 'Update' as const,
+              id: existingIntakeFormId,
+              intakeFormId: intakeFormDefinitionId,
+              type: 'Flow' as const,
+            }
+          : { operationType: 'Create' as const, intakeFormId: intakeFormDefinitionId, type: 'Flow' as const }
+        : {};
+    const body: Record<string, unknown> = {
+      agentAction: {},
+      associatedArticles: [],
+      sections: [],
+      eligibilityRules: [],
+      fulfillmentFlow:
+        fulfillmentFlowDefinitionId != null
+          ? { fulfillmentFlowId: fulfillmentFlowDefinitionId, type: 'Flow', operationType: 'Create' }
+          : {},
+      intakeForm,
+      integrations: [],
+      isActive: false,
+      name: '',
+      preProcessors: [],
+      productRequests: [],
+      targetObject: 'Case',
+      usedFor: 'ServiceProcess',
+    };
+    if (contextDefinitionDevNameOrId != null) {
+      body.contextDefinitionDevNameOrId = contextDefinitionDevNameOrId;
+    }
+    return body;
   }
 
-  const catalogItemBody = buildCatalogItemPatchBody(
-    intakeFormDefinitionId,
-    fulfillmentFlowDefinitionId,
-    existingIntakeFormId,
-    contextDefinitionDevNameOrId
-  );
+  /**
+   * Patch the service-automation catalog item with deployed flow definition ids for intake and fulfillment.
+   */
+  public static async patchCatalogItemWithFlowIds(
+    conn: Connection,
+    targetServiceProcessId: string,
+    deployedFlows: DeployedFlowInfo[],
+    deployedFlowNames: DeployedFlowNames | undefined,
+    logger?: Logger
+  ): Promise<void> {
+    const fullNameToDefId = new Map(
+      deployedFlows
+        .filter((f): f is typeof f & { definitionId: string } => f.definitionId != null)
+        .map((f) => [f.fullName, f.definitionId] as const)
+    );
+    const intakeFormDefinitionId = deployedFlowNames?.intakeForm
+      ? fullNameToDefId.get(deployedFlowNames.intakeForm.originalName)
+      : undefined;
+    const fulfillmentFlowDefinitionId = deployedFlowNames?.fulfillmentFlow
+      ? fullNameToDefId.get(deployedFlowNames.fulfillmentFlow.originalName)
+      : undefined;
 
-  logger?.log?.(`Patching catalog item: ${catalogItemPath}`);
-  logger?.log?.('Request body:');
-  logger?.logJson?.(catalogItemBody);
-  const patchResponse = await patchConnect(conn, catalogItemPath, catalogItemBody);
-  logger?.log?.('Patch response:');
-  logger?.logJson?.(patchResponse);
-  logger?.log?.('Catalog item patched successfully.');
+    const catalogItemPath = buildCatalogItemPath(targetServiceProcessId);
+
+    const catalogItem = await getConnect<CatalogItemGetResponse>(conn, catalogItemPath);
+    const existingIntakeFormId = catalogItem?.intakeForm?.id;
+    const contextDefinitionDevNameOrId = catalogItem?.contextDefinitionDevNameOrId;
+    if (existingIntakeFormId) {
+      logger?.log?.(`Fetched catalog item intakeForm.id: ${existingIntakeFormId}`);
+    }
+    if (contextDefinitionDevNameOrId) {
+      logger?.log?.(`Fetched catalog item contextDefinitionDevNameOrId: ${contextDefinitionDevNameOrId}`);
+    }
+
+    const catalogItemBody = CatalogItemPatcher.buildCatalogItemPatchBody(
+      intakeFormDefinitionId,
+      fulfillmentFlowDefinitionId,
+      existingIntakeFormId,
+      contextDefinitionDevNameOrId
+    );
+
+    logger?.log?.(`Patching catalog item: ${catalogItemPath}`);
+    logger?.log?.('Request body:');
+    logger?.logJson?.(catalogItemBody);
+    const patchResponse = await patchConnect(conn, catalogItemPath, catalogItemBody);
+    logger?.log?.('Patch response:');
+    logger?.logJson?.(patchResponse);
+    logger?.log?.('Catalog item patched successfully.');
+  }
 }

@@ -18,16 +18,18 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { FLOW_EXTENSION_FLOW, FLOW_EXTENSIONS } from '../constants.js';
 
-/**
- * Resolves the path to a flow file in the workspace.
- * Prefers .flow if it exists, otherwise .flow-meta.xml. If neither exists, returns the .flow path.
- */
-export function resolveFlowFilePath(workspaceDir: string, flowBaseName: string): string {
-  const flowPath = path.join(workspaceDir, `${flowBaseName}${FLOW_EXTENSION_FLOW}`);
-  if (fs.existsSync(flowPath)) return flowPath;
-  for (const ext of FLOW_EXTENSIONS) {
-    const p = path.join(workspaceDir, `${flowBaseName}${ext}`);
-    if (fs.existsSync(p)) return p;
+export class FlowPathResolver {
+  /**
+   * Resolves the path to a flow file in the workspace.
+   * Prefers .flow if it exists, otherwise .flow-meta.xml. If neither exists, returns the .flow path.
+   */
+  public static resolveFlowFilePath(workspaceDir: string, flowBaseName: string): string {
+    const flowPath = path.join(workspaceDir, `${flowBaseName}${FLOW_EXTENSION_FLOW}`);
+    if (fs.existsSync(flowPath)) return flowPath;
+    for (const ext of FLOW_EXTENSIONS) {
+      const p = path.join(workspaceDir, `${flowBaseName}${ext}`);
+      if (fs.existsSync(p)) return p;
+    }
+    return flowPath;
   }
-  return flowPath;
 }

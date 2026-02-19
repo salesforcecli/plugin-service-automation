@@ -22,26 +22,28 @@ export type RunValidationsResult = {
   failures: ValidationResult[];
 };
 
-/**
- * Runs all validators in parallel. Does not throw.
- */
-export async function runValidations(ctx: ValidationContext, validators: Validator[]): Promise<RunValidationsResult> {
-  const results = await Promise.all(validators.map((v) => v.validate(ctx)));
-  const failures = results.filter((r) => r.status === 'FAIL');
-  return { results, failures };
-}
-
-/**
- * Runs validations and throws if any have status FAIL.
- */
-export async function runValidationsOrThrow(
-  ctx: ValidationContext,
-  validators: Validator[]
-): Promise<RunValidationsResult> {
-  const { results, failures } = await runValidations(ctx, validators);
-  if (failures.length > 0) {
-    const message = failures.map((r) => `${r.name}: ${r.message ?? r.status}`).join('; ');
-    throw new ValidationError(`Validation failed: ${message}`);
+export class ValidationRunner {
+  /**
+   * Runs all validators in parallel. Does not throw.
+   */
+  public static async runValidations(ctx: ValidationContext, validators: Validator[]): Promise<RunValidationsResult> {
+    const results = await Promise.all(validators.map((v) => v.validate(ctx)));
+    const failures = results.filter((r) => r.status === 'FAIL');
+    return { results, failures };
   }
-  return { results, failures };
+
+  /**
+   * Runs validations and throws if any have status FAIL.
+   */
+  public static async runValidationsOrThrow(
+    ctx: ValidationContext,
+    validators: Validator[]
+  ): Promise<RunValidationsResult> {
+    const { results, failures } = await ValidationRunner.runValidations(ctx, validators);
+    if (failures.length > 0) {
+      const message = failures.map((r) => `${r.name}: ${r.message ?? r.status}`).join('; ');
+      throw new ValidationError(`Validation failed: ${message}`);
+    }
+    return { results, failures };
+  }
 }

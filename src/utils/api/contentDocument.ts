@@ -26,38 +26,36 @@ export type CreateContentDocumentResult = {
 type ContentVersionCreateResponse = { success: boolean; id: string };
 type ContentVersionRecord = { ContentDocumentId?: string };
 
-export class ContentDocumentUtil {
-  public static async createFromFile(
-    connection: Connection,
-    filePath: string,
-    title?: string
-  ): Promise<CreateContentDocumentResult> {
-    if (!fs.existsSync(filePath)) {
-      throw new Error(`File not found: ${filePath}`);
-    }
-
-    const fileName = path.basename(filePath);
-    const fileBuffer = fs.readFileSync(filePath);
-    const base64Data = fileBuffer.toString('base64');
-    const derivedTitle = title ?? fileName.replace(path.extname(fileName), '');
-
-    const createResp = (await connection.sobject('ContentVersion').create({
-      Title: derivedTitle,
-      PathOnClient: fileName,
-      VersionData: base64Data,
-    })) as ContentVersionCreateResponse;
-
-    if (!createResp?.success) {
-      throw new Error(`Failed to upload file to ContentVersion: ${JSON.stringify(createResp)}`);
-    }
-
-    const contentVersionId: string = createResp.id;
-    const cv = (await connection.sobject('ContentVersion').retrieve(contentVersionId)) as ContentVersionRecord;
-    const contentDocumentId: string = cv?.ContentDocumentId ?? '';
-    if (!contentDocumentId) {
-      throw new Error('ContentDocumentId not returned from ContentVersion retrieval.');
-    }
-
-    return { contentVersionId, contentDocumentId };
+export async function createContentDocumentFromFile(
+  connection: Connection,
+  filePath: string,
+  title?: string
+): Promise<CreateContentDocumentResult> {
+  if (!fs.existsSync(filePath)) {
+    throw new Error(`File not found: ${filePath}`);
   }
+
+  const fileName = path.basename(filePath);
+  const fileBuffer = fs.readFileSync(filePath);
+  const base64Data = fileBuffer.toString('base64');
+  const derivedTitle = title ?? fileName.replace(path.extname(fileName), '');
+
+  const createResp = (await connection.sobject('ContentVersion').create({
+    Title: derivedTitle,
+    PathOnClient: fileName,
+    VersionData: base64Data,
+  })) as ContentVersionCreateResponse;
+
+  if (!createResp?.success) {
+    throw new Error(`Failed to upload file to ContentVersion: ${JSON.stringify(createResp)}`);
+  }
+
+  const contentVersionId: string = createResp.id;
+  const cv = (await connection.sobject('ContentVersion').retrieve(contentVersionId)) as ContentVersionRecord;
+  const contentDocumentId: string = cv?.ContentDocumentId ?? '';
+  if (!contentDocumentId) {
+    throw new Error('ContentDocumentId not returned from ContentVersion retrieval.');
+  }
+
+  return { contentVersionId, contentDocumentId };
 }

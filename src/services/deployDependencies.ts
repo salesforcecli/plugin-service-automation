@@ -17,7 +17,7 @@
 import type { Connection, Org } from '@salesforce/core';
 import { CONNECT_TEMPLATE_DEPLOY_PATH_PREFIX } from '../constants.js';
 import { postConnect } from '../utils/api/connectApi.js';
-import { ContentDocumentUtil } from '../utils/api/contentDocument.js';
+import { createContentDocumentFromFile } from '../utils/api/contentDocument.js';
 import { deployFlows, type DeployedFlowInfo } from '../utils/flow/deployflow.js';
 import { FlowTransformer, type FlowTransformerResult } from '../workspace/flowTransformer.js';
 import { ServiceProcessTransformer, type DeployedFlowNames } from '../workspace/serviceProcessTransformer.js';
@@ -64,35 +64,37 @@ export type ResolvedDeployDependencies = {
   ) => Promise<DeployedFlowInfo[]>;
 };
 
-export function resolveDeployDependencies(dependencies: DeployServiceProcessDependencies): ResolvedDeployDependencies {
-  return {
-    serviceProcessTransformFn:
-      dependencies.serviceProcessTransform ??
-      ((workspacePath: string): DeployedFlowNames => ServiceProcessTransformer.transform(workspacePath)),
-    flowTransformFn:
-      dependencies.flowTransformer ??
-      ((
-        flowFilePath: string,
-        targetServiceProcessId: string,
-        serviceProcessName?: string,
-        loggerArg?: Logger
-      ): FlowTransformerResult =>
-        FlowTransformer.transformIntakeFormFlow(flowFilePath, targetServiceProcessId, serviceProcessName, loggerArg)),
-    uploadZipFn:
-      dependencies.uploadZip ??
-      (async (conn: Connection, zipPath: string): Promise<{ contentDocumentId: string }> => {
-        const r = await ContentDocumentUtil.createFromFile(conn, zipPath);
-        return { contentDocumentId: r.contentDocumentId };
-      }),
-    callTemplateDeployFn:
-      dependencies.callTemplateDeploy ??
-      (async (
-        conn: Connection,
-        contentDocumentId: string
-      ): Promise<{ deploymentResult?: string; status?: string; templateId?: string }> => {
-        const deployPath = `${CONNECT_TEMPLATE_DEPLOY_PATH_PREFIX}/${contentDocumentId}`;
-        return postConnect<{ deploymentResult?: string; status?: string; templateId?: string }>(conn, deployPath, {});
-      }),
-    deployFlowsFn: dependencies.deployFlowsFn ?? deployFlows,
-  };
+export class DeployDependenciesResolver {
+  public static resolve(dependencies: DeployServiceProcessDependencies): ResolvedDeployDependencies {
+    return {
+      serviceProcessTransformFn:
+        dependencies.serviceProcessTransform ??
+        ((workspacePath: string): DeployedFlowNames => ServiceProcessTransformer.transform(workspacePath)),
+      flowTransformFn:
+        dependencies.flowTransformer ??
+        ((
+          flowFilePath: string,
+          targetServiceProcessId: string,
+          serviceProcessName?: string,
+          loggerArg?: Logger
+        ): FlowTransformerResult =>
+          FlowTransformer.transformIntakeFormFlow(flowFilePath, targetServiceProcessId, serviceProcessName, loggerArg)),
+      uploadZipFn:
+        dependencies.uploadZip ??
+        (async (conn: Connection, zipPath: string): Promise<{ contentDocumentId: string }> => {
+          const r = await createContentDocumentFromFile(conn, zipPath);
+          return { contentDocumentId: r.contentDocumentId };
+        }),
+      callTemplateDeployFn:
+        dependencies.callTemplateDeploy ??
+        (async (
+          conn: Connection,
+          contentDocumentId: string
+        ): Promise<{ deploymentResult?: string; status?: string; templateId?: string }> => {
+          const deployPath = `${CONNECT_TEMPLATE_DEPLOY_PATH_PREFIX}/${contentDocumentId}`;
+          return postConnect<{ deploymentResult?: string; status?: string; templateId?: string }>(conn, deployPath, {});
+        }),
+      deployFlowsFn: dependencies.deployFlowsFn ?? deployFlows,
+    };
+  }
 }
