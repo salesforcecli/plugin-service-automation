@@ -17,6 +17,9 @@
 /** Filename for Service Process template metadata in workspace. */
 export const TEMPLATE_DATA_FILENAME = 'templateData.json';
 
+/** Relative path under workspace root where flow files live: metadata/flows. */
+export const METADATA_FLOWS_RELATIVE_PATH = 'metadata/flows';
+
 /** Flow file extensions used for deployment (flow-meta.xml and .xml). */
 export const FLOW_EXTENSIONS = ['.flow-meta.xml', '.xml'] as const;
 
