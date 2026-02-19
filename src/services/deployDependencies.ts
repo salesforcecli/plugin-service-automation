@@ -23,7 +23,7 @@ import { FlowTransformer, type FlowTransformerResult } from '../workspace/flowTr
 import { ServiceProcessTransformer, type DeployedFlowNames } from '../workspace/serviceProcessTransformer.js';
 import type { LogJsonFn, Logger } from '../validation/types.js';
 
-/** Injected dependencies for testing; defaults to real implementations. */
+/** Injected dependencies for testing; defaults to real implementations when not provided. */
 export type DeployServiceProcessDependencies = {
   serviceProcessTransform?: (workspacePath: string) => DeployedFlowNames;
   flowTransformer?: (
@@ -31,7 +31,7 @@ export type DeployServiceProcessDependencies = {
     targetServiceProcessId: string,
     serviceProcessName?: string,
     logger?: Logger
-  ) => FlowTransformerResult;
+  ) => FlowTransformerResult | Promise<FlowTransformerResult>;
   uploadZip?: (conn: Connection, zipPath: string) => Promise<{ contentDocumentId: string }>;
   callTemplateDeploy?: (
     conn: Connection,
@@ -44,57 +44,30 @@ export type DeployServiceProcessDependencies = {
   ) => Promise<DeployedFlowInfo[]>;
 };
 
-export type ResolvedDeployDependencies = {
-  serviceProcessTransformFn: (workspacePath: string) => DeployedFlowNames;
-  flowTransformFn: (
+export const defaults = {
+  serviceProcessTransform: (workspacePath: string): DeployedFlowNames =>
+    ServiceProcessTransformer.transform(workspacePath),
+  flowTransformer: (
     flowFilePath: string,
     targetServiceProcessId: string,
     serviceProcessName?: string,
-    loggerArg?: Logger
-  ) => FlowTransformerResult;
-  uploadZipFn: (conn: Connection, zipPath: string) => Promise<{ contentDocumentId: string }>;
-  callTemplateDeployFn: (
+    logger?: Logger
+  ): FlowTransformerResult | Promise<FlowTransformerResult> =>
+    FlowTransformer.transformIntakeFormFlow(flowFilePath, targetServiceProcessId, serviceProcessName, logger),
+  uploadZip: async (conn: Connection, zipPath: string): Promise<{ contentDocumentId: string }> => {
+    const r = await createContentDocumentFromFile(conn, zipPath);
+    return { contentDocumentId: r.contentDocumentId };
+  },
+  callTemplateDeploy: async (
     conn: Connection,
     contentDocumentId: string
-  ) => Promise<{ deploymentResult?: string; status?: string; templateId?: string }>;
+  ): Promise<{ deploymentResult?: string; status?: string; templateId?: string }> => {
+    const deployPath = `${CONNECT_TEMPLATE_DEPLOY_PATH_PREFIX}/${contentDocumentId}`;
+    return postConnect<{ deploymentResult?: string; status?: string; templateId?: string }>(conn, deployPath, {});
+  },
   deployFlowsFn: (
     org: Org,
     filePaths: string[],
     options: { checkOnly: boolean; logJson?: LogJsonFn }
-  ) => Promise<DeployedFlowInfo[]>;
+  ): Promise<DeployedFlowInfo[]> => deployFlows(org, filePaths, options),
 };
-
-export class DeployDependenciesResolver {
-  public static resolve(dependencies: DeployServiceProcessDependencies): ResolvedDeployDependencies {
-    return {
-      serviceProcessTransformFn:
-        dependencies.serviceProcessTransform ??
-        ((workspacePath: string): DeployedFlowNames => ServiceProcessTransformer.transform(workspacePath)),
-      flowTransformFn:
-        dependencies.flowTransformer ??
-        ((
-          flowFilePath: string,
-          targetServiceProcessId: string,
-          serviceProcessName?: string,
-          loggerArg?: Logger
-        ): FlowTransformerResult =>
-          FlowTransformer.transformIntakeFormFlow(flowFilePath, targetServiceProcessId, serviceProcessName, loggerArg)),
-      uploadZipFn:
-        dependencies.uploadZip ??
-        (async (conn: Connection, zipPath: string): Promise<{ contentDocumentId: string }> => {
-          const r = await createContentDocumentFromFile(conn, zipPath);
-          return { contentDocumentId: r.contentDocumentId };
-        }),
-      callTemplateDeployFn:
-        dependencies.callTemplateDeploy ??
-        (async (
-          conn: Connection,
-          contentDocumentId: string
-        ): Promise<{ deploymentResult?: string; status?: string; templateId?: string }> => {
-          const deployPath = `${CONNECT_TEMPLATE_DEPLOY_PATH_PREFIX}/${contentDocumentId}`;
-          return postConnect<{ deploymentResult?: string; status?: string; templateId?: string }>(conn, deployPath, {});
-        }),
-      deployFlowsFn: dependencies.deployFlowsFn ?? deployFlows,
-    };
-  }
-}

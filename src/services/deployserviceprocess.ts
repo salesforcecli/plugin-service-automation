@@ -28,11 +28,7 @@ import { TemplateDataReader } from '../workspace/templateData.js';
 import type { DeployedFlowNames } from '../workspace/serviceProcessTransformer.js';
 import { ValidationRunner, builtInValidators } from '../validation/index.js';
 import type { LogJsonFn, Logger, ValidationContext } from '../validation/types.js';
-import {
-  DeployDependenciesResolver,
-  type DeployServiceProcessDependencies,
-  type ResolvedDeployDependencies,
-} from './deployDependencies.js';
+import { defaults, type DeployServiceProcessDependencies } from './deployDependencies.js';
 import { CatalogItemPatcher } from './catalogItemPatch.js';
 
 export type { DeployedFlowNames, FlowNameTracking } from '../workspace/serviceProcessTransformer.js';
@@ -52,31 +48,6 @@ export type DeployServiceOptions = {
   dependencies?: DeployServiceProcessDependencies;
 };
 
-function runIntakeFormFlowTransform(
-  workspace: string,
-  targetServiceProcessId: string | undefined,
-  deployedFlowNames: DeployedFlowNames | undefined,
-  templateDataExtract: { name?: string },
-  flowTransformFn: ResolvedDeployDependencies['flowTransformFn'],
-  logger?: Logger
-): void {
-  if (!targetServiceProcessId || !deployedFlowNames?.intakeForm) {
-    logger?.log?.(
-      '[deployServiceProcess] Skipping flow transformer (no targetServiceProcessId or no intakeForm in deployedFlowNames)'
-    );
-    return;
-  }
-  const flowDir = path.join(workspace, METADATA_FLOWS_RELATIVE_PATH);
-  const intakeFormFlowPath = FlowPathResolver.resolveFlowFilePath(flowDir, deployedFlowNames.intakeForm.originalName);
-  logger?.log?.(
-    `[deployServiceProcess] Calling FlowTransformer.transformIntakeFormFlow: ${intakeFormFlowPath} ${targetServiceProcessId}`
-  );
-  const transformResult = flowTransformFn(intakeFormFlowPath, targetServiceProcessId, templateDataExtract.name, logger);
-  if (transformResult.modified) {
-    logger?.log?.(`Flow transformer: ${transformResult.message}`);
-  }
-}
-
 /**
  * Service to deploy a Service Process (Flow) to a target org.
  * Expects a .zip file: extracts it, validates, uploads template zip, calls template deploy API, transforms intake flow, deploys flows.
@@ -85,17 +56,17 @@ export class DeployService {
   private readonly org: Org;
   private readonly logger?: Logger;
   private readonly logJson?: LogJsonFn;
-  private readonly resolved: ResolvedDeployDependencies;
+  private readonly deps: Required<DeployServiceProcessDependencies>;
 
   public constructor(options: DeployServiceOptions) {
     this.org = options.org;
     this.logger = options.logger;
     this.logJson = options.logJson ?? options.logger?.logJson;
-    this.resolved = DeployDependenciesResolver.resolve(options.dependencies ?? {});
+    this.deps = { ...defaults, ...options.dependencies } as Required<DeployServiceProcessDependencies>;
   }
 
   public async deploy(inputZip: string): Promise<DeployServiceProcessResult> {
-    const { org, logger, logJson, resolved } = this;
+    const { org, logger, logJson, deps } = this;
 
     logger?.log?.(`inputZip (resolved): ${path.resolve(inputZip)}`);
 
@@ -126,7 +97,7 @@ export class DeployService {
       };
       await ValidationRunner.runValidationsOrThrow(validationContext, builtInValidators);
 
-      const deployedFlowNames = resolved.serviceProcessTransformFn(workspace);
+      const deployedFlowNames = deps.serviceProcessTransform(workspace);
 
       const { zipPath: workspaceZipPath, cleanup: cleanupWorkspaceZip } = await DeployWorkspace.createZipFromWorkspace(
         workspace
@@ -134,11 +105,11 @@ export class DeployService {
       workspaceZipCleanup = cleanupWorkspaceZip;
 
       const conn = org.getConnection();
-      const uploadResult = await resolved.uploadZipFn(conn, workspaceZipPath);
+      const uploadResult = await deps.uploadZip(conn, workspaceZipPath);
       const contentDocumentId = uploadResult.contentDocumentId;
       logger?.log?.(`Content Document ID: ${contentDocumentId}`);
 
-      const templateDeployResponse = await resolved.callTemplateDeployFn(conn, contentDocumentId);
+      const templateDeployResponse = await deps.callTemplateDeploy(conn, contentDocumentId);
       logger?.logJson?.(templateDeployResponse);
 
       if (templateDeployResponse?.status === 'FAILURE') {
@@ -155,12 +126,11 @@ export class DeployService {
           targetServiceProcessId
         )}, intakeForm=${deployedFlowNames?.intakeForm != null ? 'set' : 'none'}`
       );
-      runIntakeFormFlowTransform(
+      await this.runIntakeFormFlowTransform(
         workspace,
         targetServiceProcessId,
         deployedFlowNames,
         templateDataExtract,
-        resolved.flowTransformFn,
         logger
       );
 
@@ -176,7 +146,7 @@ export class DeployService {
         }
       }
 
-      const deployedFlows = await resolved.deployFlowsFn(org, filePaths, { checkOnly: false, logJson });
+      const deployedFlows = await deps.deployFlowsFn(org, filePaths, { checkOnly: false, logJson });
 
       if (deployedFlows.length > 0) {
         const connection = org.getConnection();
@@ -205,6 +175,32 @@ export class DeployService {
     } finally {
       workspaceZipCleanup?.();
       cleanup();
+    }
+  }
+
+  private async runIntakeFormFlowTransform(
+    workspace: string,
+    targetServiceProcessId: string | undefined,
+    deployedFlowNames: DeployedFlowNames | undefined,
+    templateDataExtract: { name?: string },
+    logger?: Logger
+  ): Promise<void> {
+    if (!targetServiceProcessId || !deployedFlowNames?.intakeForm) {
+      logger?.log?.(
+        '[deployServiceProcess] Skipping flow transformer (no targetServiceProcessId or no intakeForm in deployedFlowNames)'
+      );
+      return;
+    }
+    const flowDir = path.join(workspace, METADATA_FLOWS_RELATIVE_PATH);
+    const intakeFormFlowPath = FlowPathResolver.resolveFlowFilePath(flowDir, deployedFlowNames.intakeForm.originalName);
+    logger?.log?.(
+      `[deployServiceProcess] Calling FlowTransformer.transformIntakeFormFlow: ${intakeFormFlowPath} ${targetServiceProcessId}`
+    );
+    const transformResult = await Promise.resolve(
+      this.deps.flowTransformer(intakeFormFlowPath, targetServiceProcessId, templateDataExtract.name, logger)
+    );
+    if (transformResult.modified) {
+      logger?.log?.(`Flow transformer: ${transformResult.message}`);
     }
   }
 }

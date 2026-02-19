@@ -24,8 +24,8 @@ const NAME = 'FlowDeploymentValidator';
  * Uses context.org and context.flowFilePaths. Returns FAIL if the checkOnly deploy fails.
  * Skips (PASS) when org or flowFilePaths are missing or empty.
  */
-export const flowDeploymentValidator: Validator = {
-  async validate(ctx: ValidationContext): Promise<ValidationResult> {
+export class FlowDeploymentValidator {
+  public static async validate(ctx: ValidationContext): Promise<ValidationResult> {
     const { org, flowFilePaths } = ctx;
     if (!org || !flowFilePaths?.length) {
       return { name: NAME, status: 'PASS', message: 'No org or flow file paths provided (skipped)' };
@@ -46,5 +46,7 @@ export const flowDeploymentValidator: Validator = {
         message: `Flow deployment would fail: ${message}`,
       };
     }
-  },
-};
+  }
+}
+
+export const flowDeploymentValidator: Validator = { validate: (ctx) => FlowDeploymentValidator.validate(ctx) };

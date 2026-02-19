@@ -19,55 +19,6 @@ import * as path from 'node:path';
 import { XMLParser, XMLBuilder } from 'fast-xml-parser';
 import type { Logger } from '../validation/types.js';
 
-const CREATE_SVC_REQUEST = 'createSvcRequest';
-
-/**
- * Replaces the source-org Service Process id suffix in actionName/nameSegment
- * with the target-org Service Process id for createSvcRequest dynamic invocable actions.
- * Pattern: "spsimpleintake-01txx0000006kgyAAA" -> "spsimpleintake-<targetSpId>"
- */
-function replaceActionNameSuffix(value: string, targetServiceProcessId: string): string {
-  const lastHyphen = value.lastIndexOf('-');
-  if (lastHyphen === -1) return value;
-  return `${value.slice(0, lastHyphen + 1)}${targetServiceProcessId}`;
-}
-
-/**
- * When serviceProcessName is set, actionName/nameSegment become `<spName>-<targetServiceProcessId>`.
- * Otherwise the existing suffix is replaced with targetServiceProcessId.
- */
-function actionNameValue(currentValue: string, targetServiceProcessId: string, serviceProcessName?: string): string {
-  if (serviceProcessName != null && serviceProcessName.length > 0) {
-    return `${serviceProcessName}-${targetServiceProcessId}`;
-  }
-  return replaceActionNameSuffix(currentValue, targetServiceProcessId);
-}
-
-function visitActionCalls(node: unknown, targetServiceProcessId: string, serviceProcessName?: string): void {
-  if (!node || typeof node !== 'object') return;
-  const obj = node as Record<string, unknown>;
-
-  if (obj.actionType === CREATE_SVC_REQUEST) {
-    if (typeof obj.actionName === 'string') {
-      obj.actionName = actionNameValue(obj.actionName, targetServiceProcessId, serviceProcessName);
-    }
-    if (typeof obj.nameSegment === 'string') {
-      obj.nameSegment = actionNameValue(obj.nameSegment, targetServiceProcessId, serviceProcessName);
-    }
-    return;
-  }
-
-  for (const v of Object.values(obj)) {
-    if (Array.isArray(v)) {
-      for (const item of v) {
-        visitActionCalls(item, targetServiceProcessId, serviceProcessName);
-      }
-    } else if (v && typeof v === 'object') {
-      visitActionCalls(v, targetServiceProcessId, serviceProcessName);
-    }
-  }
-}
-
 export type FlowTransformerResult = {
   modified: boolean;
   message: string;
@@ -83,6 +34,8 @@ type FlowParseResult = { Flow?: Record<string, unknown> };
  * otherwise replaces only the id suffix.
  */
 export class FlowTransformer {
+  private static readonly CREATE_SVC_REQUEST = 'createSvcRequest';
+
   /**
    * Reads the flow file at flowFilePath, replaces createSvcRequest action
    * actionName/nameSegment with serviceProcessName-targetServiceProcessId
@@ -112,7 +65,7 @@ export class FlowTransformer {
       return { modified: false, message: 'Invalid flow XML: missing Flow root' };
     }
 
-    visitActionCalls(flowRoot, targetServiceProcessId, serviceProcessName);
+    FlowTransformer.visitActionCalls(flowRoot, targetServiceProcessId, serviceProcessName);
     flowRoot.status = 'Draft';
 
     const builder = new XMLBuilder({
@@ -171,5 +124,55 @@ export class FlowTransformer {
       modified: previousStatus !== 'Draft',
       message: 'Set fulfillment flow status to Draft',
     };
+  }
+
+  /**
+   * Replaces the source-org Service Process id suffix in actionName/nameSegment
+   * with the target-org Service Process id for createSvcRequest dynamic invocable actions.
+   */
+  private static replaceActionNameSuffix(value: string, targetServiceProcessId: string): string {
+    const lastHyphen = value.lastIndexOf('-');
+    if (lastHyphen === -1) return value;
+    return `${value.slice(0, lastHyphen + 1)}${targetServiceProcessId}`;
+  }
+
+  /**
+   * When serviceProcessName is set, actionName/nameSegment become `<spName>-<targetServiceProcessId>`.
+   * Otherwise the existing suffix is replaced with targetServiceProcessId.
+   */
+  private static actionNameValue(
+    currentValue: string,
+    targetServiceProcessId: string,
+    serviceProcessName?: string
+  ): string {
+    if (serviceProcessName != null && serviceProcessName.length > 0) {
+      return `${serviceProcessName}-${targetServiceProcessId}`;
+    }
+    return FlowTransformer.replaceActionNameSuffix(currentValue, targetServiceProcessId);
+  }
+
+  private static visitActionCalls(node: unknown, targetServiceProcessId: string, serviceProcessName?: string): void {
+    if (!node || typeof node !== 'object') return;
+    const obj = node as Record<string, unknown>;
+
+    if (obj.actionType === FlowTransformer.CREATE_SVC_REQUEST) {
+      if (typeof obj.actionName === 'string') {
+        obj.actionName = FlowTransformer.actionNameValue(obj.actionName, targetServiceProcessId, serviceProcessName);
+      }
+      if (typeof obj.nameSegment === 'string') {
+        obj.nameSegment = FlowTransformer.actionNameValue(obj.nameSegment, targetServiceProcessId, serviceProcessName);
+      }
+      return;
+    }
+
+    for (const v of Object.values(obj)) {
+      if (Array.isArray(v)) {
+        for (const item of v) {
+          FlowTransformer.visitActionCalls(item, targetServiceProcessId, serviceProcessName);
+        }
+      } else if (v && typeof v === 'object') {
+        FlowTransformer.visitActionCalls(v, targetServiceProcessId, serviceProcessName);
+      }
+    }
   }
 }

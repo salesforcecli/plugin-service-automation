@@ -22,8 +22,8 @@ const NAME = 'CustomFieldsValidator';
  * Validates that each custom field (object + field) exists in the org.
  * Returns a result; never throws. Skips (PASS) when context.customFields is missing or empty.
  */
-export const customFieldsValidator: Validator = {
-  async validate(ctx: ValidationContext): Promise<ValidationResult> {
+export class CustomFieldsValidator {
+  public static async validate(ctx: ValidationContext): Promise<ValidationResult> {
     const refs = ctx.customFields;
     if (!refs?.length) {
       return { name: NAME, status: 'PASS', message: 'No customFields provided (skipped)' };
@@ -61,5 +61,7 @@ export const customFieldsValidator: Validator = {
       const message = err instanceof Error ? err.message : String(err);
       return { name: NAME, status: 'FAIL', message: `Error: ${message}` };
     }
-  },
-};
+  }
+}
+
+export const customFieldsValidator: Validator = { validate: (ctx) => CustomFieldsValidator.validate(ctx) };
