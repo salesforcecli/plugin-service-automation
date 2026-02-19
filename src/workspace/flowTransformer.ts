@@ -113,6 +113,7 @@ export class FlowTransformer {
     }
 
     visitActionCalls(flowRoot, targetServiceProcessId, serviceProcessName);
+    flowRoot.status = 'Draft';
 
     const builder = new XMLBuilder({
       ignoreAttributes: false,
@@ -128,6 +129,47 @@ export class FlowTransformer {
     return {
       modified: true,
       message: `Updated createSvcRequest actionName/nameSegment to use Service Process id: ${targetServiceProcessId}`,
+    };
+  }
+
+  /**
+   * Reads the fulfillment flow file at flowFilePath, sets status to Draft, and writes the file back.
+   * Call before deploying the fulfillment flow to the org.
+   */
+  public static transformFulfillmentFlow(flowFilePath: string, logger?: Logger): FlowTransformerResult {
+    const absolutePath = path.resolve(flowFilePath);
+    if (!fs.existsSync(absolutePath)) {
+      logger?.log?.(`[FlowTransformer] Fulfillment flow file not found: ${absolutePath}`);
+      return { modified: false, message: `Fulfillment flow file not found: ${absolutePath}` };
+    }
+
+    const xml = fs.readFileSync(absolutePath, 'utf-8');
+    const parser = new XMLParser({
+      ignoreAttributes: false,
+      isArray: (name) => name === 'inputParameters' || name === 'fields',
+    });
+    const parsed = parser.parse(xml) as FlowParseResult;
+    const flowRoot = parsed?.Flow;
+    if (!flowRoot) {
+      logger?.log?.('[FlowTransformer] Fulfillment flow: invalid flow XML, missing Flow root');
+      return { modified: false, message: 'Invalid flow XML: missing Flow root' };
+    }
+
+    const previousStatus = flowRoot.status;
+    flowRoot.status = 'Draft';
+
+    const builder = new XMLBuilder({
+      ignoreAttributes: false,
+      format: true,
+      suppressEmptyNode: true,
+    });
+    const output = builder.build(parsed as Record<string, unknown>);
+    fs.writeFileSync(absolutePath, output, 'utf-8');
+
+    logger?.log?.('[FlowTransformer] Set fulfillment flow status to Draft (ready for deployment).');
+    return {
+      modified: previousStatus !== 'Draft',
+      message: 'Set fulfillment flow status to Draft',
     };
   }
 }

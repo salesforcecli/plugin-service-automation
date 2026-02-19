@@ -17,10 +17,12 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type { Org } from '@salesforce/core';
+import { METADATA_FLOWS_RELATIVE_PATH } from '../constants.js';
 import { DeployError, TemplateDataError } from '../errors.js';
 import { type DeployedFlowInfo } from '../utils/flow/deployflow.js';
 import { getFlowDefinitionIds } from '../utils/flow/flowTooling.js';
 import { createZipFromWorkspace, extractZipToWorkspace } from '../workspace/deployWorkspace.js';
+import { FlowTransformer } from '../workspace/flowTransformer.js';
 import { resolveFlowFilePath } from '../workspace/flowPath.js';
 import { deriveFlowsAndTemplateData } from '../workspace/templateData.js';
 import type { DeployedFlowNames } from '../workspace/serviceProcessTransformer.js';
@@ -57,7 +59,8 @@ function runIntakeFormFlowTransform(
     );
     return;
   }
-  const intakeFormFlowPath = resolveFlowFilePath(workspace, deployedFlowNames.intakeForm.originalName);
+  const flowDir = path.join(workspace, METADATA_FLOWS_RELATIVE_PATH);
+  const intakeFormFlowPath = resolveFlowFilePath(flowDir, deployedFlowNames.intakeForm.originalName);
   logger?.log?.(
     `[deployServiceProcess] Calling FlowTransformer.transformIntakeFormFlow: ${intakeFormFlowPath} ${targetServiceProcessId}`
   );
@@ -90,11 +93,12 @@ export async function deployServiceProcess(options: {
   try {
     const { filePaths, templateDataExtract } = deriveFlowsAndTemplateData(workspace);
     if (filePaths.length === 0) {
-      const dirContents = fs.readdirSync(workspace);
+      const flowDir = path.join(workspace, METADATA_FLOWS_RELATIVE_PATH);
+      const dirContents = fs.existsSync(flowDir) ? fs.readdirSync(flowDir) : [];
       throw new TemplateDataError(
-        'No flow files found in the zip. The zip should contain templateData.json and flow files (.flow-meta.xml or .xml). ' +
-          `Resolved path: ${workspace}. Directory contents: ${
-            dirContents.length > 0 ? dirContents.join(', ') : '(empty)'
+        `No flow files found in the zip. Expected structure: <service-process-id>/templateData.json and <service-process-id>/${METADATA_FLOWS_RELATIVE_PATH}/*.flow-meta.xml (or .xml). ` +
+          `Resolved workspace: ${workspace}. Flow directory contents: ${
+            dirContents.length > 0 ? dirContents.join(', ') : '(missing or empty)'
           }`
       );
     }
@@ -145,6 +149,15 @@ export async function deployServiceProcess(options: {
       resolved.flowTransformFn,
       logger
     );
+
+    if (deployedFlowNames?.fulfillmentFlow) {
+      const flowDir = path.join(workspace, METADATA_FLOWS_RELATIVE_PATH);
+      const fulfillmentFlowPath = resolveFlowFilePath(flowDir, deployedFlowNames.fulfillmentFlow.originalName);
+      const fulfillmentResult = FlowTransformer.transformFulfillmentFlow(fulfillmentFlowPath, logger);
+      if (fulfillmentResult.modified) {
+        logger?.log?.(`Flow transformer: ${fulfillmentResult.message}`);
+      }
+    }
 
     const deployedFlows = await resolved.deployFlowsFn(org, filePaths, { checkOnly: false, logJson });
 

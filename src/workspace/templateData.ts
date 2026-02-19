@@ -16,7 +16,7 @@
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { FLOW_EXTENSIONS, TEMPLATE_DATA_FILENAME } from '../constants.js';
+import { FLOW_EXTENSIONS, METADATA_FLOWS_RELATIVE_PATH, TEMPLATE_DATA_FILENAME } from '../constants.js';
 import type { CustomFieldRef } from '../validation/types.js';
 
 export type TemplateDataExtract = {
@@ -89,13 +89,17 @@ export function readTemplateDataFromDir(dirPath: string): TemplateDataExtract {
   }
 }
 
-/** Directory with templateData.json and flow files; returns file paths and template extract. */
+/** Directory with templateData.json at root and flow files under metadata/flows; returns file paths and template extract. */
 export function deriveFlowsAndTemplateData(inputPath: string): FlowsAndTemplateResult {
-  const entries = fs.readdirSync(inputPath);
+  const flowDir = path.join(inputPath, METADATA_FLOWS_RELATIVE_PATH);
   const extSet = new Set(FLOW_EXTENSIONS.map((e) => e.toLowerCase()));
-  const files = entries.filter((f) => extSet.has(path.extname(f).toLowerCase())).map((f) => path.join(inputPath, f));
+  let filePaths: string[] = [];
+  if (fs.existsSync(flowDir) && fs.statSync(flowDir).isDirectory()) {
+    const entries = fs.readdirSync(flowDir);
+    filePaths = entries.filter((f) => extSet.has(path.extname(f).toLowerCase())).map((f) => path.join(flowDir, f));
+  }
   return {
-    filePaths: files,
+    filePaths,
     templateDataExtract: readTemplateDataFromDir(inputPath),
   };
 }
