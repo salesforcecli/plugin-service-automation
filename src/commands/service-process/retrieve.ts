@@ -14,8 +14,11 @@
  * limitations under the License.
  */
 
+import { resolve } from 'node:path';
 import { SfCommand, Flags } from '@salesforce/sf-plugins-core';
-import { Messages } from '@salesforce/core';
+import { Messages, Org } from '@salesforce/core';
+import { retrieveServiceProcess } from '../../services/retrieveServiceProcessService.js';
+import { ServiceProcessRetrieveRequest, OrgMetadata } from '../../types/types.js';
 
 Messages.importMessagesDirectoryFromMetaUrl(import.meta.url);
 const messages = Messages.loadMessages('@salesforce/plugin-service-automation', 'service-process.retrieve');
@@ -30,24 +33,48 @@ export default class ServiceProcessRetrieve extends SfCommand<ServiceProcessRetr
   public static readonly examples = messages.getMessages('examples');
 
   public static readonly flags = {
-    'service-process-id': Flags.string({
+    'service-process-id': Flags.salesforceId({
       summary: messages.getMessage('flags.service-process-id.summary'),
       char: 'i',
       required: true,
+      length: 'both',
+      startsWith: '01t',
     }),
     'output-dir': Flags.directory({
       summary: messages.getMessage('flags.output-dir.summary'),
       char: 'd',
-      exists: true,
     }),
     'target-org': Flags.requiredOrg(),
     'api-version': Flags.orgApiVersion(),
   };
 
+  private static serviceProcessRetrieveRequest(flags: Record<string, unknown>): ServiceProcessRetrieveRequest {
+    const serviceProcessId = flags['service-process-id'] as string;
+    const outputDir = resolve((flags['output-dir'] as string | undefined) ?? process.cwd());
+    const org = flags['target-org'] as Org;
+    const apiVersion = flags['api-version'] as string | undefined;
+    const connection = org.getConnection(apiVersion);
+    const orgMetadata: OrgMetadata = {
+      orgInstanceUrl: connection.instanceUrl,
+      orgId: org.getOrgId(),
+      apiVersion: apiVersion ?? connection.getApiVersion(),
+    };
+    return {
+      serviceProcessId,
+      outputDir,
+      org,
+      apiVersion,
+      connection,
+      orgMetadata,
+    };
+  }
+
   public async run(): Promise<ServiceProcessRetrieveResult> {
     const { flags } = await this.parse(ServiceProcessRetrieve);
-    const inputDir = flags['output-dir'];
-    this.log(`hello world , output directory specified: ${inputDir ?? 'undefined'}`);
+    const request: ServiceProcessRetrieveRequest = ServiceProcessRetrieve.serviceProcessRetrieveRequest(flags);
+    this.spinner.start('Starting Service Process Retrieve');
+    await retrieveServiceProcess(request);
+    this.spinner.stop('✅');
     return {
       path: 'hello world',
     };
