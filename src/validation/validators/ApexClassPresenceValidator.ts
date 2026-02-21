@@ -22,8 +22,8 @@ const NAME = 'ApexClassPresenceValidator';
  * Validates that the given Apex class names exist in the org.
  * Returns a result; never throws. Skips (PASS) when context.apexClassNames is missing or empty.
  */
-export const apexClassPresenceValidator: Validator = {
-  async validate(ctx: ValidationContext): Promise<ValidationResult> {
+export class ApexClassPresenceValidator {
+  public static async validate(ctx: ValidationContext): Promise<ValidationResult> {
     const classNames = ctx.apexClassNames;
     if (!classNames?.length) {
       return { name: NAME, status: 'PASS', message: 'No apexClassNames provided (skipped)' };
@@ -51,5 +51,7 @@ export const apexClassPresenceValidator: Validator = {
       const message = err instanceof Error ? err.message : String(err);
       return { name: NAME, status: 'FAIL', message: `Error: ${message}` };
     }
-  },
-};
+  }
+}
+
+export const apexClassPresenceValidator: Validator = { validate: (ctx) => ApexClassPresenceValidator.validate(ctx) };

@@ -45,61 +45,65 @@ export type FlowsAndTemplateResult = {
   templateDataExtract: TemplateDataExtract;
 };
 
-/** Parse templateData.json content into apexClassNames and customFields (single pass). */
-export function parseTemplateData(content: string): TemplateDataExtract {
-  try {
-    const data = JSON.parse(content) as TemplateData;
-    const apexClassNames = [
-      ...new Set(
-        (data.preProcessors ?? [])
-          .map((p) => p.apiName)
-          .filter((name): name is string => typeof name === 'string' && name.length > 0)
-      ),
-    ];
-    const objectApiName = data.targetObject?.trim();
-    const rawCustomFields: CustomFieldRef[] = objectApiName
-      ? (data.sections ?? []).flatMap((section) =>
-          (section.attributes ?? [])
-            .filter((a) => a.isMappedAnchorField === true && typeof a.apiName === 'string' && a.apiName.endsWith('__c'))
-            .map((a) => ({ objectApiName, fieldApiName: a.apiName! }))
-        )
-      : [];
-    const seen = new Set<string>();
-    const customFields = rawCustomFields.filter((ref) => {
-      const key = `${ref.objectApiName}.${ref.fieldApiName}`;
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
-    const name = typeof data.name === 'string' ? data.name.trim() || undefined : undefined;
-    return { apexClassNames, customFields, name };
-  } catch {
-    return EMPTY_TEMPLATE;
+export class TemplateDataReader {
+  /** Parse templateData.json content into apexClassNames and customFields (single pass). */
+  public static parseTemplateData(content: string): TemplateDataExtract {
+    try {
+      const data = JSON.parse(content) as TemplateData;
+      const apexClassNames = [
+        ...new Set(
+          (data.preProcessors ?? [])
+            .map((p) => p.apiName)
+            .filter((name): name is string => typeof name === 'string' && name.length > 0)
+        ),
+      ];
+      const objectApiName = data.targetObject?.trim();
+      const rawCustomFields: CustomFieldRef[] = objectApiName
+        ? (data.sections ?? []).flatMap((section) =>
+            (section.attributes ?? [])
+              .filter(
+                (a) => a.isMappedAnchorField === true && typeof a.apiName === 'string' && a.apiName.endsWith('__c')
+              )
+              .map((a) => ({ objectApiName, fieldApiName: a.apiName! }))
+          )
+        : [];
+      const seen = new Set<string>();
+      const customFields = rawCustomFields.filter((ref) => {
+        const key = `${ref.objectApiName}.${ref.fieldApiName}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+      const name = typeof data.name === 'string' ? data.name.trim() || undefined : undefined;
+      return { apexClassNames, customFields, name };
+    } catch {
+      return EMPTY_TEMPLATE;
+    }
   }
-}
 
-/** Read templateData.json from the directory. */
-export function readTemplateDataFromDir(dirPath: string): TemplateDataExtract {
-  const templatePath = path.join(dirPath, TEMPLATE_DATA_FILENAME);
-  if (!fs.existsSync(templatePath)) return EMPTY_TEMPLATE;
-  try {
-    return parseTemplateData(fs.readFileSync(templatePath, 'utf-8'));
-  } catch {
-    return EMPTY_TEMPLATE;
+  /** Read templateData.json from the directory. */
+  public static readTemplateDataFromDir(dirPath: string): TemplateDataExtract {
+    const templatePath = path.join(dirPath, TEMPLATE_DATA_FILENAME);
+    if (!fs.existsSync(templatePath)) return EMPTY_TEMPLATE;
+    try {
+      return TemplateDataReader.parseTemplateData(fs.readFileSync(templatePath, 'utf-8'));
+    } catch {
+      return EMPTY_TEMPLATE;
+    }
   }
-}
 
-/** Directory with templateData.json at root and flow files under metadata/flows; returns file paths and template extract. */
-export function deriveFlowsAndTemplateData(inputPath: string): FlowsAndTemplateResult {
-  const flowDir = path.join(inputPath, METADATA_FLOWS_RELATIVE_PATH);
-  const extSet = new Set(FLOW_EXTENSIONS.map((e) => e.toLowerCase()));
-  let filePaths: string[] = [];
-  if (fs.existsSync(flowDir) && fs.statSync(flowDir).isDirectory()) {
-    const entries = fs.readdirSync(flowDir);
-    filePaths = entries.filter((f) => extSet.has(path.extname(f).toLowerCase())).map((f) => path.join(flowDir, f));
+  /** Directory with templateData.json at root and flow files under metadata/flows; returns file paths and template extract. */
+  public static deriveFlowsAndTemplateData(inputPath: string): FlowsAndTemplateResult {
+    const flowDir = path.join(inputPath, METADATA_FLOWS_RELATIVE_PATH);
+    const extSet = new Set(FLOW_EXTENSIONS.map((e) => e.toLowerCase()));
+    let filePaths: string[] = [];
+    if (fs.existsSync(flowDir) && fs.statSync(flowDir).isDirectory()) {
+      const entries = fs.readdirSync(flowDir);
+      filePaths = entries.filter((f) => extSet.has(path.extname(f).toLowerCase())).map((f) => path.join(flowDir, f));
+    }
+    return {
+      filePaths,
+      templateDataExtract: TemplateDataReader.readTemplateDataFromDir(inputPath),
+    };
   }
-  return {
-    filePaths,
-    templateDataExtract: readTemplateDataFromDir(inputPath),
-  };
 }

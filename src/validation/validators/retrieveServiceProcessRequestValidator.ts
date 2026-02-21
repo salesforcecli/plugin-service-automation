@@ -14,34 +14,47 @@
  * limitations under the License.
  */
 
-import { Connection, SfError } from '@salesforce/core';
+import type { Connection } from '@salesforce/core';
+import { SfError } from '@salesforce/core';
 import { ServiceProcessRetrieveValidationError } from '../../errors.js';
-import { ServiceProcessRetrieveRequest, ServiceProcessRecord } from '../../types/types.js';
+import type { ServiceProcessRetrieveRequest, ServiceProcessRecord } from '../../types/types.js';
 
-export async function validateRequest(request: ServiceProcessRetrieveRequest): Promise<void> {
-  if (!request.serviceProcessId) {
-    throw new ServiceProcessRetrieveValidationError('Service process ID is required');
-  }
-  await validateServiceProcessExists(request.serviceProcessId, request.connection);
-}
+const SINGLE_RECORD_QUERY_ERROR_NAMES = ['SingleRecordQuery_NoRecords', 'SingleRecordQuery_MultipleRecords'];
 
-async function validateServiceProcessExists(serviceProcessId: string, connection: Connection): Promise<void> {
-  try {
-    await connection.singleRecordQuery<ServiceProcessRecord>(
-      `SELECT Id, Name, UsedFor FROM Product2 WHERE Id = '${serviceProcessId}' AND UsedFor = 'ServiceProcess'`
+/**
+ * Validates a service process retrieve request (service process ID required and exists in org).
+ */
+export class RetrieveServiceProcessRequestValidator {
+  public static async validate(request: ServiceProcessRetrieveRequest): Promise<void> {
+    if (!request.serviceProcessId) {
+      throw new ServiceProcessRetrieveValidationError('Service process ID is required');
+    }
+    await RetrieveServiceProcessRequestValidator.validateServiceProcessExists(
+      request.serviceProcessId,
+      request.connection
     );
-  } catch (error) {
-    if (error instanceof SfError && isSingleRecordQueryError(error as SfError)) {
+  }
+
+  private static async validateServiceProcessExists(serviceProcessId: string, connection: Connection): Promise<void> {
+    try {
+      await connection.singleRecordQuery<ServiceProcessRecord>(
+        `SELECT Id, Name, UsedFor FROM Product2 WHERE Id = '${serviceProcessId}' AND UsedFor = 'ServiceProcess'`
+      );
+    } catch (error) {
+      const isSingleRecordQueryError = error instanceof SfError && SINGLE_RECORD_QUERY_ERROR_NAMES.includes(error.name);
+      if (isSingleRecordQueryError) {
+        throw new ServiceProcessRetrieveValidationError(
+          `Service process with ID '${serviceProcessId}' does not exist in the org. Please try again with a valid service process ID.`
+        );
+      }
       throw new ServiceProcessRetrieveValidationError(
-        `Service process with ID '${serviceProcessId}' does not exist in the org. Please try again with a valid service process ID.`
+        `Failed to validate existence of service process with ID '${serviceProcessId}'. Please try again.`
       );
     }
-    throw new ServiceProcessRetrieveValidationError(
-      `Failed to validate existence of service process with ID '${serviceProcessId}'. Please try again.`
-    );
   }
 }
 
-function isSingleRecordQueryError(error: SfError): boolean {
-  return error.name === 'SingleRecordQuery_NoRecords' || error.name === 'SingleRecordQuery_MultipleRecords';
+/** Convenience: validate a retrieve request using the default validator. */
+export async function validateRequest(request: ServiceProcessRetrieveRequest): Promise<void> {
+  await RetrieveServiceProcessRequestValidator.validate(request);
 }
