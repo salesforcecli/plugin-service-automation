@@ -160,7 +160,6 @@ async function generateDeploymentMetadata(
 
     // Query FlowRecord by ApiName+NamespacePrefix and determine deployment intent
     const flowIntent = await getFlowDeploymentIntentByName(connection, apiName, namespace, flowType);
-    console.log('Intake flow query result:', JSON.stringify(flowIntent, null, 2));
 
     if (flowIntent) {
       deploymentMetadata.intakeFlow = flowIntent;

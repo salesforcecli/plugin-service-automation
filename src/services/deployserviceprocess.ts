@@ -100,7 +100,7 @@ export class DeployService {
         const flowDir = path.join(workspace, METADATA_FLOWS_RELATIVE_PATH);
         const dirContents = fs.existsSync(flowDir) ? fs.readdirSync(flowDir) : [];
         throw new TemplateDataError(
-          `No flow files found in the zip, but deployment metadata indicates flows need to be deployed. ` +
+          'No flow files found in the zip, but deployment metadata indicates flows need to be deployed. ' +
             `Expected structure: <service-process-id>/templateData.json and <service-process-id>/${METADATA_FLOWS_RELATIVE_PATH}/*.flow-meta.xml (or .xml). ` +
             `Resolved workspace: ${workspace}. Flow directory contents: ${
               dirContents.length > 0 ? dirContents.join(', ') : '(missing or empty)'

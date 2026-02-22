@@ -95,7 +95,7 @@ export class ServiceProcessTransformer {
     if (data.intakeForm && typeof data.intakeForm === 'object') {
       const deployIntent = deploymentMetadata?.intakeFlow?.deploymentIntent;
 
-      if (deployIntent != 'link') {
+      if (deployIntent !== 'link') {
         data.intakeForm = null;
       }
     }
@@ -104,7 +104,7 @@ export class ServiceProcessTransformer {
     if (data.fulfillmentFlow && typeof data.fulfillmentFlow === 'object') {
       const deployIntent = deploymentMetadata?.fulfillmentFlow?.deploymentIntent;
 
-      if (deployIntent != 'link') {
+      if (deployIntent !== 'link') {
         data.fulfillmentFlow = null;
       }
     }
