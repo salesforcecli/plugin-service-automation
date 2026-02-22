@@ -20,10 +20,9 @@ import ServiceProcessRetrieve from '../../../src/commands/service-process/retrie
 
 describe('service-process retrieve', () => {
   const $$ = new TestContext();
-  let sfCommandStubs: ReturnType<typeof stubSfCommandUx>;
 
   beforeEach(() => {
-    sfCommandStubs = stubSfCommandUx($$.SANDBOX);
+    stubSfCommandUx($$.SANDBOX);
   });
 
   afterEach(() => {
@@ -31,18 +30,20 @@ describe('service-process retrieve', () => {
   });
 
   it('runs retrieve command', async () => {
-    await ServiceProcessRetrieve.run(['--service-process-id', '0SPxx0000008ABC', '--target-org', 'test@org.com']);
-    const output = sfCommandStubs.log
-      .getCalls()
-      .flatMap((c) => c.args)
-      .join('\n');
-    expect(output).to.include('hello world');
+    const result = await ServiceProcessRetrieve.run([
+      '--service-process-id',
+      '01txx0000008ABC',
+      '--target-org',
+      'test@org.com',
+    ]);
+    // Verify the command returns a result
+    expect(result).to.have.property('path');
   });
 
   it('runs retrieve command with --json', async () => {
     const result = await ServiceProcessRetrieve.run([
       '--service-process-id',
-      '0SPxx0000008ABC',
+      '01txx0000008ABC',
       '--target-org',
       'test@org.com',
     ]);

@@ -57,9 +57,8 @@ describe('service-process deploy', () => {
       expect.fail('Expected command to throw');
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      expect(message).to.include('No flow files found');
-      expect(message).to.include('templateData.json');
-      expect(message).to.include('.flow-meta.xml');
+      // Now expects deployment-metadata.json error since we check for it first
+      expect(message).to.include('deployment-metadata.json not found');
     } finally {
       cleanup();
     }
@@ -72,7 +71,8 @@ describe('service-process deploy', () => {
       expect.fail('Expected command to throw');
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      expect(message).to.include('No flow files found');
+      // Now expects deployment-metadata.json error since we check for it first
+      expect(message).to.include('deployment-metadata.json not found');
     } finally {
       cleanup();
     }
