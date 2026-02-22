@@ -20,11 +20,12 @@ import type { Org } from '@salesforce/core';
 import { METADATA_FLOWS_RELATIVE_PATH } from '../constants.js';
 import { DeployError, TemplateDataError } from '../errors.js';
 import { type DeployedFlowInfo } from '../utils/flow/deployflow.js';
-import { getFlowDefinitionIds } from '../utils/flow/flowTooling.js';
+import { getFlowDefinitionIds, getOrgNamespace } from '../utils/flow/flowMetadata.js';
 import { DeployWorkspace } from '../workspace/deployWorkspace.js';
 import { FlowTransformer } from '../workspace/flowTransformer.js';
 import { FlowPathResolver } from '../workspace/flowPath.js';
 import { TemplateDataReader } from '../workspace/templateData.js';
+import { readDeploymentMetadata } from '../workspace/deploymentMetadata.js';
 import type { DeployedFlowNames } from '../workspace/serviceProcessTransformer.js';
 import { ValidationRunner, builtInValidators } from '../validation/index.js';
 import type { LogJsonFn, Logger, ValidationContext } from '../validation/types.js';
@@ -43,6 +44,8 @@ export type DeployServiceProcessResult = {
 
 export type DeployServiceOptions = {
   org: Org;
+  /** Optional: expected API version (e.g. from --api-version flag); validated against org if set. */
+  expectedApiVersion?: string;
   logger?: Logger;
   logJson?: LogJsonFn;
   dependencies?: DeployServiceProcessDependencies;
@@ -54,12 +57,14 @@ export type DeployServiceOptions = {
  */
 export class DeployService {
   private readonly org: Org;
+  private readonly expectedApiVersion?: string;
   private readonly logger?: Logger;
   private readonly logJson?: LogJsonFn;
   private readonly deps: Required<DeployServiceProcessDependencies>;
 
   public constructor(options: DeployServiceOptions) {
     this.org = options.org;
+    this.expectedApiVersion = options.expectedApiVersion;
     this.logger = options.logger;
     this.logJson = options.logJson ?? options.logger?.logJson;
     this.deps = { ...defaults, ...options.dependencies } as Required<DeployServiceProcessDependencies>;
@@ -75,29 +80,62 @@ export class DeployService {
 
     try {
       const { filePaths, templateDataExtract } = TemplateDataReader.deriveFlowsAndTemplateData(workspace);
-      if (filePaths.length === 0) {
+      const metadataApiVersion = TemplateDataReader.readOrgMetadataVersionFromDir(workspace);
+
+      // Read deployment metadata (required for flow validation)
+      const deploymentMetadata = await readDeploymentMetadata(workspace);
+      if (!deploymentMetadata) {
+        throw new TemplateDataError(
+          'deployment-metadata.json not found. Ensure package was retrieved with metadata support.'
+        );
+      }
+
+      // Check if any flows need deployment (vs linking to existing flows)
+      const needsIntakeDeployment = deploymentMetadata.intakeFlow?.deploymentIntent === 'deploy';
+      const needsFulfillmentDeployment = deploymentMetadata.fulfillmentFlow?.deploymentIntent === 'deploy';
+      const needsDeployment = needsIntakeDeployment || needsFulfillmentDeployment;
+
+      // Only validate flow files exist if we actually need to deploy flows
+      if (needsDeployment && filePaths.length === 0) {
         const flowDir = path.join(workspace, METADATA_FLOWS_RELATIVE_PATH);
         const dirContents = fs.existsSync(flowDir) ? fs.readdirSync(flowDir) : [];
         throw new TemplateDataError(
-          `No flow files found in the zip. Expected structure: <service-process-id>/templateData.json and <service-process-id>/${METADATA_FLOWS_RELATIVE_PATH}/*.flow-meta.xml (or .xml). ` +
+          `No flow files found in the zip, but deployment metadata indicates flows need to be deployed. ` +
+            `Expected structure: <service-process-id>/templateData.json and <service-process-id>/${METADATA_FLOWS_RELATIVE_PATH}/*.flow-meta.xml (or .xml). ` +
             `Resolved workspace: ${workspace}. Flow directory contents: ${
               dirContents.length > 0 ? dirContents.join(', ') : '(missing or empty)'
             }`
         );
       }
 
+      // Get target org namespace (for deployment uniqueness checks)
+      const targetOrgNamespace = await getOrgNamespace(org.getConnection());
+
       const { apexClassNames, customFields } = templateDataExtract;
       const validationContext: ValidationContext = {
         conn: org.getConnection(),
         org,
+        expectedApiVersion: this.expectedApiVersion,
+        metadataApiVersion,
         flowFilePaths: filePaths,
         apexClassNames: apexClassNames.length > 0 ? apexClassNames : undefined,
         customFields: customFields.length > 0 ? customFields : undefined,
         logJson,
+        intakeFlow: deploymentMetadata.intakeFlow,
+        fulfillmentFlow: deploymentMetadata.fulfillmentFlow,
+        targetOrgNamespace,
       };
       await ValidationRunner.runValidationsOrThrow(validationContext, builtInValidators);
 
-      const deployedFlowNames = deps.serviceProcessTransform(workspace);
+      const deployedFlowNames = deps.serviceProcessTransform(workspace, deploymentMetadata, targetOrgNamespace);
+
+      // Log the updated templateData.json before deployment
+      const templateDataPath = path.join(workspace, 'templateData.json');
+      if (fs.existsSync(templateDataPath)) {
+        const updatedTemplateData = fs.readFileSync(templateDataPath, 'utf-8');
+        logger?.log?.('[deployServiceProcess] Updated templateData.json before deploy:');
+        logger?.log?.(updatedTemplateData);
+      }
 
       const { zipPath: workspaceZipPath, cleanup: cleanupWorkspaceZip } = await DeployWorkspace.createZipFromWorkspace(
         workspace
@@ -212,12 +250,14 @@ export class DeployService {
 export async function deployServiceProcess(options: {
   org: Org;
   inputZip: string;
+  expectedApiVersion?: string;
   logger?: Logger;
   logJson?: LogJsonFn;
   dependencies?: DeployServiceProcessDependencies;
 }): Promise<DeployServiceProcessResult> {
   const service = new DeployService({
     org: options.org,
+    expectedApiVersion: options.expectedApiVersion,
     logger: options.logger,
     logJson: options.logJson,
     dependencies: options.dependencies,

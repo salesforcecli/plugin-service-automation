@@ -31,6 +31,14 @@ export type CustomFieldRef = {
   fieldApiName: string;
 };
 
+/** Reference to a flow with deployment metadata. */
+export type FlowReference = {
+  apiName: string;
+  namespace: string | null;
+  deploymentIntent: 'link' | 'deploy';
+  flowType: 'regular' | 'orchestrator';
+};
+
 /** Optional logger for JSON output (e.g. deploy response). Passed from command through service to validators/utils. */
 export type LogJsonFn = (data: unknown) => void;
 
@@ -47,12 +55,22 @@ export type ValidationContext = {
   conn: Connection;
   /** Required for FlowDeploymentValidator: runs checkOnly deploy to verify flow deployment would succeed. */
   org?: Org;
+  /** Optional: when set, used as reference version (e.g. from --api-version flag); otherwise org's API version is used. */
+  expectedApiVersion?: string;
+  /** Optional: API version from org-metadata.json in the zip; validated against expectedApiVersion or org version. */
+  metadataApiVersion?: string;
   /** Absolute paths to .flow-meta.xml files for flow deployment validation. */
   flowFilePaths?: string[];
   apexClassNames?: string[];
   customFields?: CustomFieldRef[];
   /** Optional: used by FlowDeploymentValidator and deploy to log JSON (e.g. deploy response). */
   logJson?: LogJsonFn;
+  /** Optional: intake flow reference with deployment intent; validated based on link/deploy mode. */
+  intakeFlow?: FlowReference;
+  /** Optional: fulfillment flow reference with deployment intent; validated based on link/deploy mode. */
+  fulfillmentFlow?: FlowReference;
+  /** Optional: target org namespace for deployment uniqueness checks. */
+  targetOrgNamespace?: string | null;
 };
 
 /**

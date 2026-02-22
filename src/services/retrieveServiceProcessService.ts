@@ -23,6 +23,8 @@ import JSZip from 'jszip';
 import { ServiceProcessDataRetrievalFailure } from '../errors.js';
 import { validateRequest } from '../validation/validators/retrieveServiceProcessRequestValidator.js';
 import { ServiceProcessRetrieveRequest } from '../types/types.js';
+import { getFlowDeploymentIntentByName } from '../utils/flow/flowMetadata.js';
+import type { DeploymentMetadata } from '../workspace/deploymentMetadata.js';
 import {
   createZipFile,
   createTemporaryDirectory,
@@ -141,6 +143,69 @@ export async function fetchFlows(
   }
 }
 
+async function generateDeploymentMetadata(
+  serviceProcessData: Record<string, unknown>,
+  connection: Connection
+): Promise<DeploymentMetadata> {
+  const deploymentMetadata: DeploymentMetadata = {
+    version: '1.0',
+  };
+
+  // Process intake flow
+  const intakeForm = serviceProcessData.intakeForm as Record<string, unknown> | undefined;
+  if (intakeForm?.apiName) {
+    const flowType = 'regular'; // Intake flows are always regular
+    const apiName = intakeForm.apiName as string;
+    const namespace = (intakeForm.namespacePrefix as string | null) ?? null;
+
+    // Query FlowRecord by ApiName+NamespacePrefix and determine deployment intent
+    const flowIntent = await getFlowDeploymentIntentByName(connection, apiName, namespace, flowType);
+    console.log('Intake flow query result:', JSON.stringify(flowIntent, null, 2));
+
+    if (flowIntent) {
+      deploymentMetadata.intakeFlow = flowIntent;
+    } else {
+      // Flow not found - default to deploy intent
+      deploymentMetadata.intakeFlow = {
+        apiName,
+        namespace,
+        deploymentIntent: 'deploy',
+        flowType: 'regular',
+      };
+    }
+  }
+
+  // Process fulfillment flow
+  const fulfillmentFlow = serviceProcessData.fulfillmentFlow as Record<string, unknown> | undefined;
+  if (fulfillmentFlow?.apiName) {
+    // Check if it's an orchestrator flow
+    const flowType =
+      fulfillmentFlow.type === 'FlowOrchestrator' || fulfillmentFlow.type === 'FLOW_ORCHESTRATOR'
+        ? 'orchestrator'
+        : 'regular';
+
+    const apiName = fulfillmentFlow.apiName as string;
+    const namespace = (fulfillmentFlow.namespacePrefix as string | null) ?? null;
+
+    // Query FlowRecord/FlowOrchestration by ApiName+NamespacePrefix and determine deployment intent
+    const flowIntent = await getFlowDeploymentIntentByName(connection, apiName, namespace, flowType);
+
+    if (flowIntent) {
+      deploymentMetadata.fulfillmentFlow = flowIntent;
+    } else {
+      // Flow not found - default to deploy intent
+      deploymentMetadata.fulfillmentFlow = {
+        apiName,
+        namespace,
+        deploymentIntent: 'deploy',
+        flowType,
+      };
+    }
+  }
+
+  return deploymentMetadata;
+}
+
 export async function generateZippedArtifacts(
   request: ServiceProcessRetrieveRequest,
   serviceProcessData: Record<string, unknown>,
@@ -152,22 +217,42 @@ export async function generateZippedArtifacts(
   const serviceProcessJson = JSON.stringify(serviceProcessData, null, 2);
   const orgMetadataJson = JSON.stringify(request.orgMetadata, null, 2);
 
+  // Generate deployment metadata
+  const deploymentMetadata = await generateDeploymentMetadata(serviceProcessData, request.connection);
+  const deploymentMetadataJson = JSON.stringify(deploymentMetadata, null, 2);
+
   const zip = new JSZip();
-  zip.file('service-process.json', serviceProcessJson);
+  zip.file('templateData.json', serviceProcessJson);
   zip.file('org-metadata.json', orgMetadataJson);
+  zip.file('deployment-metadata.json', deploymentMetadataJson);
 
   const flowMetadataFolder = zip.folder('metadata')?.folder('flows');
 
-  if (serviceProcessDeps.intakeForm) {
-    const intakeForm = serviceProcessDeps.intakeForm;
-    const intakeFormXmlContent = intakeForm as string;
-    flowMetadataFolder?.file('intake.flow-meta.xml', intakeFormXmlContent);
+  // Extract apiNames from serviceProcessData (templateData.json)
+  const getFlowApiName = (flowData: unknown): string | undefined => {
+    if (typeof flowData === 'string' && flowData.trim().length > 0) return flowData.trim();
+    if (
+      flowData &&
+      typeof flowData === 'object' &&
+      'apiName' in flowData &&
+      typeof (flowData as { apiName: unknown }).apiName === 'string'
+    ) {
+      return (flowData as { apiName: string }).apiName.trim();
+    }
+    return undefined;
+  };
+
+  const intakeFormApiName = getFlowApiName(serviceProcessData.intakeForm);
+  const fulfillmentFlowApiName = getFlowApiName(serviceProcessData.fulfillmentFlow);
+
+  if (serviceProcessDeps.intakeForm && intakeFormApiName) {
+    const intakeFormXmlContent = serviceProcessDeps.intakeForm as string;
+    flowMetadataFolder?.file(`${intakeFormApiName}.flow-meta.xml`, intakeFormXmlContent);
   }
 
-  if (serviceProcessDeps.fulfillmentForm) {
-    const fulfillmentForm = serviceProcessDeps.fulfillmentForm;
-    const fulfillmentFormXmlContent = fulfillmentForm as string;
-    flowMetadataFolder?.file('fulfillment.flow-meta.xml', fulfillmentFormXmlContent);
+  if (serviceProcessDeps.fulfillmentForm && fulfillmentFlowApiName) {
+    const fulfillmentFormXmlContent = serviceProcessDeps.fulfillmentForm as string;
+    flowMetadataFolder?.file(`${fulfillmentFlowApiName}.flow-meta.xml`, fulfillmentFormXmlContent);
   }
 
   await createZipFile(zipFilePath, zip);

@@ -81,6 +81,7 @@ export class CatalogItemPatcher {
         .filter((f): f is typeof f & { definitionId: string } => f.definitionId != null)
         .map((f) => [f.fullName, f.definitionId] as const)
     );
+
     const intakeFormDefinitionId = deployedFlowNames?.intakeForm
       ? fullNameToDefId.get(deployedFlowNames.intakeForm.originalName)
       : undefined;

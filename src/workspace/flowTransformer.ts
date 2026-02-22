@@ -57,6 +57,8 @@ export class FlowTransformer {
     const parser = new XMLParser({
       ignoreAttributes: false,
       isArray: (name) => name === 'inputParameters' || name === 'fields',
+      removeNSPrefix: false, // Preserve namespace prefixes like xsi:nil
+      trimValues: false, // Don't trim attribute values
     });
     const parsed = parser.parse(xml) as FlowParseResult;
     const flowRoot = parsed?.Flow;
@@ -71,7 +73,11 @@ export class FlowTransformer {
     const builder = new XMLBuilder({
       ignoreAttributes: false,
       format: true,
-      suppressEmptyNode: true,
+      suppressBooleanAttributes: false, // Keep boolean attributes like xsi:nil="true"
+      suppressUnpairedNode: false, // Don't suppress self-closing tags
+      unpairedTags: [], // Allow all tags to be self-closing if needed
+      attributeNamePrefix: '@_', // Default prefix for attributes
+      textNodeName: '#text', // Default text node name
     });
     const output = builder.build(parsed as Record<string, unknown>);
     fs.writeFileSync(absolutePath, output, 'utf-8');
@@ -100,6 +106,8 @@ export class FlowTransformer {
     const parser = new XMLParser({
       ignoreAttributes: false,
       isArray: (name) => name === 'inputParameters' || name === 'fields',
+      removeNSPrefix: false, // Preserve namespace prefixes like xsi:nil
+      trimValues: false, // Don't trim attribute values
     });
     const parsed = parser.parse(xml) as FlowParseResult;
     const flowRoot = parsed?.Flow;
@@ -114,7 +122,11 @@ export class FlowTransformer {
     const builder = new XMLBuilder({
       ignoreAttributes: false,
       format: true,
-      suppressEmptyNode: true,
+      suppressBooleanAttributes: false, // Keep boolean attributes like xsi:nil="true"
+      suppressUnpairedNode: false, // Don't suppress self-closing tags
+      unpairedTags: [], // Allow all tags to be self-closing if needed
+      attributeNamePrefix: '@_', // Default prefix for attributes
+      textNodeName: '#text', // Default text node name
     });
     const output = builder.build(parsed as Record<string, unknown>);
     fs.writeFileSync(absolutePath, output, 'utf-8');

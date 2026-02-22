@@ -16,7 +16,12 @@
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { FLOW_EXTENSIONS, METADATA_FLOWS_RELATIVE_PATH, TEMPLATE_DATA_FILENAME } from '../constants.js';
+import {
+  FLOW_EXTENSIONS,
+  METADATA_FLOWS_RELATIVE_PATH,
+  ORG_METADATA_FILENAME,
+  TEMPLATE_DATA_FILENAME,
+} from '../constants.js';
 import type { CustomFieldRef } from '../validation/types.js';
 
 export type TemplateDataExtract = {
@@ -24,9 +29,26 @@ export type TemplateDataExtract = {
   customFields: CustomFieldRef[];
   /** Service process name from templateData.json (name). */
   name?: string;
+  /** Intake flow developer name from templateData.json (intakeForm). */
+  intakeFlowName?: string;
+  /** Fulfillment flow type from templateData.json (fulfillmentFlow.type). */
+  fulfillmentFlowType?: 'regular' | 'orchestrator';
 };
 
 const EMPTY_TEMPLATE: TemplateDataExtract = { apexClassNames: [], customFields: [] };
+
+function getFlowNameFromTemplate(value: unknown): string | undefined {
+  if (typeof value === 'string' && value.trim().length > 0) return value.trim();
+  if (
+    value &&
+    typeof value === 'object' &&
+    'apiName' in value &&
+    typeof (value as { apiName: unknown }).apiName === 'string'
+  ) {
+    return (value as { apiName: string }).apiName.trim();
+  }
+  return undefined;
+}
 
 /** Shape of templateData.json (only fields we read for validation). */
 export type TemplateData = {
@@ -36,8 +58,8 @@ export type TemplateData = {
   sections?: Array<{
     attributes?: Array<{ apiName?: string; isMappedAnchorField?: boolean }>;
   }>;
-  intakeForm?: string | null;
-  fulfillmentFlow?: string | null;
+  intakeForm?: string | { apiName?: string } | null;
+  fulfillmentFlow?: string | { apiName?: string; type?: string } | null;
 };
 
 export type FlowsAndTemplateResult = {
@@ -75,9 +97,45 @@ export class TemplateDataReader {
         return true;
       });
       const name = typeof data.name === 'string' ? data.name.trim() || undefined : undefined;
-      return { apexClassNames, customFields, name };
+      const intakeFlowName = getFlowNameFromTemplate(data.intakeForm);
+
+      // Extract fulfillment flow type (orchestrator vs regular)
+      let fulfillmentFlowType: 'regular' | 'orchestrator' | undefined;
+      if (data.fulfillmentFlow && typeof data.fulfillmentFlow === 'object' && 'type' in data.fulfillmentFlow) {
+        fulfillmentFlowType = data.fulfillmentFlow.type === 'FlowOrchestrator' ? 'orchestrator' : 'regular';
+      } else if (data.fulfillmentFlow) {
+        // If fulfillmentFlow exists but no type, default to regular
+        fulfillmentFlowType = 'regular';
+      }
+
+      return { apexClassNames, customFields, name, intakeFlowName, fulfillmentFlowType };
     } catch {
       return EMPTY_TEMPLATE;
+    }
+  }
+
+  /**
+   * Read org-metadata.json from the directory and return apiVersion for validation.
+   * Accepts apiVersion as string or number (e.g. 65.0). Returns undefined if file is missing or has no version.
+   */
+  public static readOrgMetadataVersionFromDir(dirPath: string): string | undefined {
+    const metadataPath = path.join(dirPath, ORG_METADATA_FILENAME);
+    if (!fs.existsSync(metadataPath)) return undefined;
+    try {
+      const data = JSON.parse(fs.readFileSync(metadataPath, 'utf-8')) as { apiVersion?: string | number };
+      const raw = data.apiVersion;
+      if (raw == null) return undefined;
+      const version =
+        typeof raw === 'number'
+          ? Number.isInteger(raw)
+            ? `${raw}.0`
+            : String(raw)
+          : typeof raw === 'string'
+          ? raw.trim()
+          : undefined;
+      return version && version.length > 0 ? version : undefined;
+    } catch {
+      return undefined;
     }
   }
 

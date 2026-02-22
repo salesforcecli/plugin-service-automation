@@ -18,16 +18,33 @@ import type { Validator } from '../types.js';
 import { customFieldsValidator } from './CustomFieldsValidator.js';
 import { flowDeploymentValidator } from './FlowDeploymentValidator.js';
 import { apexClassPresenceValidator } from './ApexClassPresenceValidator.js';
+import { orgApiVersionValidator } from './OrgApiVersionValidator.js';
+import { intakeFlowUniquenessValidator } from './IntakeFlowUniquenessValidator.js';
+import { fulfillmentFlowUniquenessValidator } from './FulfillmentFlowUniquenessValidator.js';
+import { intakeFlowExistenceValidator } from './IntakeFlowExistenceValidator.js';
+import { fulfillmentFlowExistenceValidator } from './FulfillmentFlowExistenceValidator.js';
 
 export { customFieldsValidator } from './CustomFieldsValidator.js';
 export { flowDeploymentValidator } from './FlowDeploymentValidator.js';
 export { apexClassPresenceValidator } from './ApexClassPresenceValidator.js';
+export { orgApiVersionValidator } from './OrgApiVersionValidator.js';
+export { intakeFlowUniquenessValidator } from './IntakeFlowUniquenessValidator.js';
+export { fulfillmentFlowUniquenessValidator } from './FulfillmentFlowUniquenessValidator.js';
+export { intakeFlowExistenceValidator } from './IntakeFlowExistenceValidator.js';
+export { fulfillmentFlowExistenceValidator } from './FulfillmentFlowExistenceValidator.js';
 
 /**
- * Built-in validators: custom fields, flow deployment (checkOnly), Apex class presence.
+ * Built-in validators: org API version, custom fields, flow deployment (checkOnly), Apex class presence,
+ * intake flow uniqueness (deploy mode), intake flow existence (link mode),
+ * fulfillment flow uniqueness (deploy mode), fulfillment flow existence (link mode).
  */
 export const builtInValidators: Validator[] = [
+  orgApiVersionValidator,
   customFieldsValidator,
   flowDeploymentValidator,
   apexClassPresenceValidator,
+  intakeFlowUniquenessValidator,
+  intakeFlowExistenceValidator,
+  fulfillmentFlowUniquenessValidator,
+  fulfillmentFlowExistenceValidator,
 ];

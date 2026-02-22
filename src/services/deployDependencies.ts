@@ -21,11 +21,16 @@ import { createContentDocumentFromFile } from '../utils/api/contentDocument.js';
 import { deployFlows, type DeployedFlowInfo } from '../utils/flow/deployflow.js';
 import { FlowTransformer, type FlowTransformerResult } from '../workspace/flowTransformer.js';
 import { ServiceProcessTransformer, type DeployedFlowNames } from '../workspace/serviceProcessTransformer.js';
+import type { DeploymentMetadata } from '../workspace/deploymentMetadata.js';
 import type { LogJsonFn, Logger } from '../validation/types.js';
 
 /** Injected dependencies for testing; defaults to real implementations when not provided. */
 export type DeployServiceProcessDependencies = {
-  serviceProcessTransform?: (workspacePath: string) => DeployedFlowNames;
+  serviceProcessTransform?: (
+    workspacePath: string,
+    deploymentMetadata?: DeploymentMetadata,
+    targetOrgNamespace?: string | null
+  ) => DeployedFlowNames;
   flowTransformer?: (
     flowFilePath: string,
     targetServiceProcessId: string,
@@ -45,8 +50,11 @@ export type DeployServiceProcessDependencies = {
 };
 
 export const defaults = {
-  serviceProcessTransform: (workspacePath: string): DeployedFlowNames =>
-    ServiceProcessTransformer.transform(workspacePath),
+  serviceProcessTransform: (
+    workspacePath: string,
+    deploymentMetadata?: DeploymentMetadata,
+    targetOrgNamespace?: string | null
+  ): DeployedFlowNames => ServiceProcessTransformer.transform(workspacePath, deploymentMetadata, targetOrgNamespace),
   flowTransformer: (
     flowFilePath: string,
     targetServiceProcessId: string,
