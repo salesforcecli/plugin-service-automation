@@ -16,7 +16,7 @@
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import type { Org } from '@salesforce/core';
+import type { Connection, Org } from '@salesforce/core';
 import { METADATA_FLOWS_RELATIVE_PATH } from '../constants.js';
 import { DeployError, TemplateDataError } from '../errors.js';
 import { type DeployedFlowInfo } from '../utils/flow/deployflow.js';
@@ -25,12 +25,13 @@ import { DeployWorkspace } from '../workspace/deployWorkspace.js';
 import { FlowTransformer } from '../workspace/flowTransformer.js';
 import { FlowPathResolver } from '../workspace/flowPath.js';
 import { TemplateDataReader } from '../workspace/templateData.js';
-import { readDeploymentMetadata } from '../workspace/deploymentMetadata.js';
+import { readDeploymentMetadata, type DeploymentMetadata } from '../workspace/deploymentMetadata.js';
 import type { DeployedFlowNames } from '../workspace/serviceProcessTransformer.js';
 import { ValidationRunner, builtInValidators } from '../validation/index.js';
 import type { LogJsonFn, Logger, ValidationContext } from '../validation/types.js';
 import { defaults, type DeployServiceProcessDependencies } from './deployDependencies.js';
 import { CatalogItemPatcher } from './catalogItemPatch.js';
+import { RollbackService, RollbackScenario, type RollbackData } from './rollback.js';
 
 export type { DeployedFlowNames, FlowNameTracking } from '../workspace/serviceProcessTransformer.js';
 export type { DeployServiceProcessDependencies } from './deployDependencies.js';
@@ -70,6 +71,7 @@ export class DeployService {
     this.deps = { ...defaults, ...options.dependencies } as Required<DeployServiceProcessDependencies>;
   }
 
+  // eslint-disable-next-line complexity
   public async deploy(inputZip: string): Promise<DeployServiceProcessResult> {
     const { org, logger, logJson, deps } = this;
 
@@ -77,6 +79,13 @@ export class DeployService {
 
     const { workspace, cleanup } = await DeployWorkspace.extractZipToWorkspace(inputZip);
     let workspaceZipCleanup: (() => void) | undefined;
+
+    // Rollback state tracking
+    let targetServiceProcessId: string | undefined;
+    let deployedFlows: DeployedFlowInfo[] | undefined;
+    let deployedFlowNames: DeployedFlowNames | undefined;
+    let needsRollback = false;
+    let rollbackScenario: RollbackScenario | undefined;
 
     try {
       const { filePaths, templateDataExtract } = TemplateDataReader.deriveFlowsAndTemplateData(workspace);
@@ -111,6 +120,10 @@ export class DeployService {
       // Get target org namespace (for deployment uniqueness checks)
       const targetOrgNamespace = await getOrgNamespace(org.getConnection());
 
+      // Phase 1: Set flows to Draft BEFORE validators run
+      // This ensures validators check Draft flows instead of Active flows with runtime errors
+      FlowTransformer.setFlowsToDraft(workspace, deploymentMetadata);
+
       const { apexClassNames, customFields } = templateDataExtract;
       const validationContext: ValidationContext = {
         conn: org.getConnection(),
@@ -127,7 +140,7 @@ export class DeployService {
       };
       await ValidationRunner.runValidationsOrThrow(validationContext, builtInValidators);
 
-      const deployedFlowNames = deps.serviceProcessTransform(workspace, deploymentMetadata, targetOrgNamespace);
+      deployedFlowNames = deps.serviceProcessTransform(workspace, deploymentMetadata, targetOrgNamespace);
 
       // Log the updated templateData.json before deployment
       const templateDataPath = path.join(workspace, 'templateData.json');
@@ -158,55 +171,95 @@ export class DeployService {
         throw new DeployError(message, 'TemplateDeployFailed');
       }
 
-      const targetServiceProcessId = templateDeployResponse?.deploymentResult;
-      logger?.log?.(
-        `[deployServiceProcess] Before flow transformer: targetServiceProcessId=${String(
-          targetServiceProcessId
-        )}, intakeForm=${deployedFlowNames?.intakeForm != null ? 'set' : 'none'}`
-      );
-      await this.runIntakeFormFlowTransform(
-        workspace,
-        targetServiceProcessId,
-        deployedFlowNames,
-        templateDataExtract,
-        logger
-      );
+      targetServiceProcessId = templateDeployResponse?.deploymentResult;
 
-      if (deployedFlowNames?.fulfillmentFlow) {
-        const flowDir = path.join(workspace, METADATA_FLOWS_RELATIVE_PATH);
-        const fulfillmentFlowPath = FlowPathResolver.resolveFlowFilePath(
-          flowDir,
-          deployedFlowNames.fulfillmentFlow.originalName
-        );
-        const fulfillmentResult = FlowTransformer.transformFulfillmentFlow(fulfillmentFlowPath, logger);
-        if (fulfillmentResult.modified) {
-          logger?.log?.(`Flow transformer: ${fulfillmentResult.message}`);
-        }
-      }
-
-      const deployedFlows = await deps.deployFlowsFn(org, filePaths, { checkOnly: false, logJson });
-
-      if (deployedFlows.length > 0) {
-        const connection = org.getConnection();
-        const definitionIds = await getFlowDefinitionIds(
-          connection,
-          deployedFlows.map((f) => f.fullName)
-        );
-        logger?.log?.('Fetched flow definition ids from Tooling API:');
-        for (const f of deployedFlows) {
-          f.definitionId = definitionIds.get(f.fullName);
-          const defId = f.definitionId ?? '(not found)';
-          logger?.log?.(`  ${f.fullName}: id=${f.id}, definitionId=${defId}`);
-        }
+      // Enter rollback-protected zone immediately after SP creation
+      try {
+        // Enable rollback tracking immediately after SP creation
         if (targetServiceProcessId) {
-          await CatalogItemPatcher.patchCatalogItemWithFlowIds(
-            connection,
-            targetServiceProcessId,
-            deployedFlows,
-            deployedFlowNames,
+          needsRollback = true;
+          rollbackScenario = RollbackScenario.ServiceProcessOnly;
+        }
+
+        logger?.log?.(
+          `[deployServiceProcess] Before flow transformer: targetServiceProcessId=${String(
+            targetServiceProcessId
+          )}, intakeForm=${deployedFlowNames?.intakeForm != null ? 'set' : 'none'}`
+        );
+        await this.runIntakeFormFlowTransform(
+          workspace,
+          targetServiceProcessId,
+          deployedFlowNames,
+          templateDataExtract,
+          deploymentMetadata,
+          logger
+        );
+
+        // Only transform fulfillment flow if deploymentIntent is 'deploy'
+        if (deployedFlowNames?.fulfillmentFlow && deploymentMetadata?.fulfillmentFlow?.deploymentIntent === 'deploy') {
+          const flowDir = path.join(workspace, METADATA_FLOWS_RELATIVE_PATH);
+          const fulfillmentFlowPath = FlowPathResolver.resolveFlowFilePath(
+            flowDir,
+            deployedFlowNames.fulfillmentFlow.originalName
+          );
+          const fulfillmentResult = FlowTransformer.transformFulfillmentFlow(fulfillmentFlowPath, logger);
+          if (fulfillmentResult.modified) {
+            logger?.log?.(`Flow transformer: ${fulfillmentResult.message}`);
+          }
+        }
+
+        // Only deploy flows if at least one needs deployment
+        if (needsDeployment && filePaths.length > 0) {
+          deployedFlows = await deps.deployFlowsFn(org, filePaths, { checkOnly: false, logJson });
+          needsRollback = true;
+          rollbackScenario = RollbackScenario.ServiceProcessOnly;
+
+          if (deployedFlows.length > 0) {
+            const connection = org.getConnection();
+            const definitionIds = await getFlowDefinitionIds(
+              connection,
+              deployedFlows.map((f) => f.fullName)
+            );
+            logger?.log?.('Fetched flow definition ids from Tooling API:');
+            for (const f of deployedFlows) {
+              f.definitionId = definitionIds.get(f.fullName);
+              const defId = f.definitionId ?? '(not found)';
+              logger?.log?.(`  ${f.fullName}: id=${f.id}, definitionId=${defId}`);
+            }
+
+            // Upgrade rollback scenario: now flows are deployed
+            rollbackScenario = RollbackScenario.ServiceProcessAndFlows;
+
+            if (targetServiceProcessId) {
+              await CatalogItemPatcher.patchCatalogItemWithFlowIds(
+                connection,
+                targetServiceProcessId,
+                deployedFlows,
+                deployedFlowNames,
+                logger
+              );
+            }
+          }
+        } else {
+          logger?.log?.('[deployServiceProcess] Skipping flow deployment (no flows need deployment)');
+          // Flows are already linked via template deployment API
+        }
+
+        // Success! Disable rollback
+        needsRollback = false;
+      } catch (flowDeployError) {
+        logger?.log?.(`Flow deployment or linking failed: ${(flowDeployError as Error).message}`);
+        if (needsRollback && targetServiceProcessId) {
+          logger?.log?.(`Initiating rollback (scenario: ${rollbackScenario ?? 'unknown'})...`);
+          await this.performRollback(
+            org.getConnection(),
+            rollbackScenario!,
+            { targetServiceProcessId, deployedFlows, deployedFlowNames },
             logger
           );
+          logger?.log?.('Rollback completed successfully.');
         }
+        throw flowDeployError;
       }
 
       return { contentDocumentId, deployedFlowNames, deployedFlows };
@@ -221,8 +274,15 @@ export class DeployService {
     targetServiceProcessId: string | undefined,
     deployedFlowNames: DeployedFlowNames | undefined,
     templateDataExtract: { name?: string },
+    deploymentMetadata: DeploymentMetadata | undefined,
     logger?: Logger
   ): Promise<void> {
+    // Check if intake flow should be deployed (not linked)
+    if (deploymentMetadata?.intakeFlow?.deploymentIntent !== 'deploy') {
+      logger?.log?.('[deployServiceProcess] Skipping intake form transformation (deploymentIntent is not deploy)');
+      return;
+    }
+
     if (!targetServiceProcessId || !deployedFlowNames?.intakeForm) {
       logger?.log?.(
         '[deployServiceProcess] Skipping flow transformer (no targetServiceProcessId or no intakeForm in deployedFlowNames)'
@@ -239,6 +299,33 @@ export class DeployService {
     );
     if (transformResult.modified) {
       logger?.log?.(`Flow transformer: ${transformResult.message}`);
+    }
+  }
+
+  // eslint-disable-next-line class-methods-use-this
+  private async performRollback(
+    connection: Connection,
+    scenario: RollbackScenario,
+    rollbackData: RollbackData,
+    logger?: Logger
+  ): Promise<void> {
+    try {
+      if (scenario === RollbackScenario.ServiceProcessOnly) {
+        await RollbackService.rollbackServiceProcessOnly(connection, rollbackData.targetServiceProcessId, logger);
+      } else if (scenario === RollbackScenario.ServiceProcessAndFlows) {
+        await RollbackService.rollbackServiceProcessAndFlows(connection, rollbackData, logger);
+      }
+    } catch (rollbackError) {
+      logger?.log?.(`Rollback failed: ${(rollbackError as Error).message}`);
+      logger?.log?.('Manual cleanup required. Please delete the following resources:');
+      logger?.log?.(`  - Service Process ID: ${rollbackData.targetServiceProcessId}`);
+      if (rollbackData.deployedFlows && rollbackData.deployedFlows.length > 0) {
+        logger?.log?.('  - Deployed flows:');
+        for (const flow of rollbackData.deployedFlows) {
+          logger?.log?.(`    - ${flow.fullName} (InteractionDefinitionVersion ID: ${flow.id ?? 'unknown'})`);
+        }
+      }
+      // Don't re-throw: original error is more important
     }
   }
 }

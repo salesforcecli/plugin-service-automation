@@ -19,7 +19,6 @@ import { SfCommand, Flags } from '@salesforce/sf-plugins-core';
 import { Messages, Org } from '@salesforce/core';
 import { retrieveServiceProcess } from '../../services/retrieveServiceProcessService.js';
 import { ServiceProcessRetrieveRequest, OrgMetadata } from '../../types/types.js';
-import { getOrgNamespace } from '../../utils/flow/flowMetadata.js';
 
 Messages.importMessagesDirectoryFromMetaUrl(import.meta.url);
 const messages = Messages.loadMessages('@salesforce/plugin-service-automation', 'service-process.retrieve');
@@ -49,23 +48,17 @@ export default class ServiceProcessRetrieve extends SfCommand<ServiceProcessRetr
     'api-version': Flags.orgApiVersion(),
   };
 
-  private static async serviceProcessRetrieveRequest(
-    flags: Record<string, unknown>
-  ): Promise<ServiceProcessRetrieveRequest> {
+  private static serviceProcessRetrieveRequest(flags: Record<string, unknown>): ServiceProcessRetrieveRequest {
     const serviceProcessId = flags['service-process-id'] as string;
     const outputDir = resolve((flags['output-dir'] as string | undefined) ?? process.cwd());
     const org = flags['target-org'] as Org;
     const apiVersion = flags['api-version'] as string | undefined;
     const connection = org.getConnection(apiVersion);
 
-    // Query org namespace
-    const namespace = await getOrgNamespace(connection);
-
     const orgMetadata: OrgMetadata = {
       orgInstanceUrl: connection.instanceUrl,
       orgId: org.getOrgId(),
       apiVersion: apiVersion ?? connection.getApiVersion(),
-      namespace,
     };
     return {
       serviceProcessId,
@@ -79,7 +72,7 @@ export default class ServiceProcessRetrieve extends SfCommand<ServiceProcessRetr
 
   public async run(): Promise<ServiceProcessRetrieveResult> {
     const { flags } = await this.parse(ServiceProcessRetrieve);
-    const request: ServiceProcessRetrieveRequest = await ServiceProcessRetrieve.serviceProcessRetrieveRequest(flags);
+    const request: ServiceProcessRetrieveRequest = ServiceProcessRetrieve.serviceProcessRetrieveRequest(flags);
     this.spinner.start('Starting Service Process Retrieve');
     await retrieveServiceProcess(request);
     this.spinner.stop('✅');

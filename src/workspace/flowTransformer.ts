@@ -17,7 +17,10 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { XMLParser, XMLBuilder } from 'fast-xml-parser';
+import { METADATA_FLOWS_RELATIVE_PATH } from '../constants.js';
 import type { Logger } from '../validation/types.js';
+import type { DeploymentMetadata } from './deploymentMetadata.js';
+import { FlowPathResolver } from './flowPath.js';
 
 export type FlowTransformerResult = {
   modified: boolean;
@@ -92,6 +95,29 @@ export class FlowTransformer {
   }
 
   /**
+   * Phase 1: Set all flows to Draft status (before validation).
+   * This ensures validators check Draft flows instead of Active flows with runtime errors.
+   */
+  public static setFlowsToDraft(workspace: string, deploymentMetadata: DeploymentMetadata): void {
+    const flowDir = path.join(workspace, METADATA_FLOWS_RELATIVE_PATH);
+
+    // Set intake form to Draft if it needs deployment
+    if (deploymentMetadata.intakeFlow?.deploymentIntent === 'deploy') {
+      const intakeFlowPath = FlowPathResolver.resolveFlowFilePath(flowDir, deploymentMetadata.intakeFlow.apiName);
+      this.setFlowToDraft(intakeFlowPath);
+    }
+
+    // Set fulfillment flow to Draft if it needs deployment
+    if (deploymentMetadata.fulfillmentFlow?.deploymentIntent === 'deploy') {
+      const fulfillmentFlowPath = FlowPathResolver.resolveFlowFilePath(
+        flowDir,
+        deploymentMetadata.fulfillmentFlow.apiName
+      );
+      this.setFlowToDraft(fulfillmentFlowPath);
+    }
+  }
+
+  /**
    * Reads the fulfillment flow file at flowFilePath, sets status to Draft, and writes the file back.
    * Call before deploying the fulfillment flow to the org.
    */
@@ -136,6 +162,43 @@ export class FlowTransformer {
       modified: previousStatus !== 'Draft',
       message: 'Set fulfillment flow status to Draft',
     };
+  }
+
+  /**
+   * Helper: Set a single flow to Draft status without modifying other fields.
+   */
+  private static setFlowToDraft(flowFilePath: string): void {
+    const absolutePath = path.resolve(flowFilePath);
+    if (!fs.existsSync(absolutePath)) {
+      return; // Silently skip if file doesn't exist
+    }
+
+    const xml = fs.readFileSync(absolutePath, 'utf-8');
+    const parser = new XMLParser({
+      ignoreAttributes: false,
+      isArray: (name) => name === 'inputParameters' || name === 'fields',
+      removeNSPrefix: false,
+      trimValues: false,
+    });
+    const parsed = parser.parse(xml) as FlowParseResult;
+    const flowRoot = parsed?.Flow;
+    if (!flowRoot) {
+      return; // Silently skip if invalid XML
+    }
+
+    flowRoot.status = 'Draft';
+
+    const builder = new XMLBuilder({
+      ignoreAttributes: false,
+      format: true,
+      suppressBooleanAttributes: false,
+      suppressUnpairedNode: false,
+      unpairedTags: [],
+      attributeNamePrefix: '@_',
+      textNodeName: '#text',
+    });
+    const output = builder.build(parsed as Record<string, unknown>);
+    fs.writeFileSync(absolutePath, output, 'utf-8');
   }
 
   /**

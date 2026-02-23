@@ -20,7 +20,6 @@ export type OrgMetadata = {
   orgInstanceUrl: string;
   orgId: string;
   apiVersion: string;
-  namespace: string | null;
 };
 
 export type ServiceProcessRetrieveRequest = {
