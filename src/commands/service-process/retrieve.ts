@@ -54,6 +54,7 @@ export default class ServiceProcessRetrieve extends SfCommand<ServiceProcessRetr
     const org = flags['target-org'] as Org;
     const apiVersion = flags['api-version'] as string | undefined;
     const connection = org.getConnection(apiVersion);
+
     const orgMetadata: OrgMetadata = {
       orgInstanceUrl: connection.instanceUrl,
       orgId: org.getOrgId(),

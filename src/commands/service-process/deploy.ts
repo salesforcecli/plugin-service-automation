@@ -80,10 +80,15 @@ export default class ServiceProcessDeploy extends SfCommand<ServiceProcessDeploy
     }
     this.log(`Input zip file: ${inputZip}`);
 
+    const apiVersion = flags['api-version'];
+    const connection = org.getConnection(apiVersion);
+    this.log(`Org API version: ${connection.getApiVersion()}`);
+
     let result;
     try {
       const deployService = new DeployService({
         org: flags['target-org'],
+        expectedApiVersion: apiVersion,
         logger: {
           log: (msg: string) => this.log(msg),
           logJson: this.logJson.bind(this),

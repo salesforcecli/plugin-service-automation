@@ -21,7 +21,12 @@ import type { DeployedFlowInfo } from '../utils/flow/deployflow.js';
 import type { DeployedFlowNames } from '../workspace/serviceProcessTransformer.js';
 import type { Logger } from '../validation/types.js';
 
-export type CatalogItemGetResponse = { intakeForm?: { id?: string }; contextDefinitionDevNameOrId?: string };
+export type CatalogItemGetResponse = {
+  intakeForm?: { id?: string };
+  fulfillmentFlow?: { id?: string };
+  preProcessors?: Array<{ id?: string }>;
+  contextDefinitionDevNameOrId?: string;
+};
 
 export class CatalogItemPatcher {
   /** Build catalog item PATCH body with intakeFormId and fulfillmentFlowId from deployed flow definition ids. */
@@ -81,6 +86,7 @@ export class CatalogItemPatcher {
         .filter((f): f is typeof f & { definitionId: string } => f.definitionId != null)
         .map((f) => [f.fullName, f.definitionId] as const)
     );
+
     const intakeFormDefinitionId = deployedFlowNames?.intakeForm
       ? fullNameToDefId.get(deployedFlowNames.intakeForm.originalName)
       : undefined;

@@ -21,5 +21,6 @@ export {
   customFieldsValidator,
   flowDeploymentValidator,
   apexClassPresenceValidator,
+  orgApiVersionValidator,
   builtInValidators,
 } from './validators/index.js';

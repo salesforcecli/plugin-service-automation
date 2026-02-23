@@ -17,6 +17,9 @@
 /** Filename for Service Process template metadata in workspace. */
 export const TEMPLATE_DATA_FILENAME = 'templateData.json';
 
+/** Filename for org metadata in workspace (e.g. from retrieve); contains apiVersion for validation. */
+export const ORG_METADATA_FILENAME = 'org-metadata.json';
+
 /** Relative path under workspace root where flow files live: metadata/flows. */
 export const METADATA_FLOWS_RELATIVE_PATH = 'metadata/flows';
 

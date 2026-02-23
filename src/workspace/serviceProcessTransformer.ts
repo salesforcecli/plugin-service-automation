@@ -17,6 +17,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { TEMPLATE_DATA_FILENAME } from '../constants.js';
+import type { DeploymentMetadata } from './deploymentMetadata.js';
 
 /** Tracking for a flow's original name and deployed name (e.g. after template deploy). */
 export type FlowNameTracking = {
@@ -32,15 +33,24 @@ export type DeployedFlowNames = {
 
 /**
  * Transforms templateData.json in a workspace: captures intakeForm and fulfillmentFlow
- * into DeployedFlowNames (deployedName = originalName for now), sets intakeForm and
- * fulfillmentFlow to null in the file, and writes it back. Only modifies the workspace copy.
+ * into DeployedFlowNames (deployedName = originalName for now), handles flows based on
+ * deployment intent (set to null for "deploy", keep as-is for "link"), adjusts preprocessor
+ * namespace to target org, and writes it back. Only modifies the workspace copy.
  */
 export class ServiceProcessTransformer {
   /**
    * Reads templateData.json from the workspace, captures intakeForm and fulfillmentFlow,
-   * sets them to null in the file, and returns the captured flow names.
+   * handles them based on deployment intent, and returns the captured flow names.
+   *
+   * @param workspacePath Path to the workspace containing templateData.json
+   * @param deploymentMetadata Deployment metadata with flow deployment intents
+   * @param targetOrgNamespace Target org's namespace for preprocessor namespace adjustment
    */
-  public static transform(workspacePath: string): DeployedFlowNames {
+  public static transform(
+    workspacePath: string,
+    deploymentMetadata?: DeploymentMetadata,
+    targetOrgNamespace?: string | null
+  ): DeployedFlowNames {
     const templatePath = path.join(workspacePath, TEMPLATE_DATA_FILENAME);
     if (!fs.existsSync(templatePath)) {
       return {};
@@ -81,8 +91,39 @@ export class ServiceProcessTransformer {
       };
     }
 
-    data.intakeForm = null;
-    data.fulfillmentFlow = null;
+    // Handle intakeForm based on deployment intent
+    if (data.intakeForm && typeof data.intakeForm === 'object') {
+      const deployIntent = deploymentMetadata?.intakeFlow?.deploymentIntent;
+
+      if (deployIntent !== 'link') {
+        data.intakeForm = null;
+      }
+    }
+
+    // Handle fulfillmentFlow based on deployment intent
+    if (data.fulfillmentFlow && typeof data.fulfillmentFlow === 'object') {
+      const deployIntent = deploymentMetadata?.fulfillmentFlow?.deploymentIntent;
+
+      if (deployIntent !== 'link') {
+        data.fulfillmentFlow = null;
+      }
+    }
+
+    // Handle preprocessors - update namespace only (no intent filtering)
+    if (Array.isArray(data.preProcessors)) {
+      data.preProcessors = data.preProcessors.map((preprocessor): unknown => {
+        if (preprocessor && typeof preprocessor === 'object') {
+          const ppObj = preprocessor as Record<string, unknown>;
+          // Update namespace to target org's namespace
+          return {
+            ...ppObj,
+            namespacePrefix: targetOrgNamespace ?? null,
+          };
+        }
+        return preprocessor as unknown;
+      });
+    }
+
     fs.writeFileSync(templatePath, JSON.stringify(data, null, 2), 'utf-8');
 
     return result;

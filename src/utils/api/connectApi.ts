@@ -98,3 +98,7 @@ export function patchConnect<T = unknown>(
 ): Promise<T> {
   return requestConnectApi<T>(connection, path, { method: 'PATCH', body, apiVersion });
 }
+
+export function deleteConnect<T = unknown>(connection: Connection, path: string, apiVersion?: string): Promise<T> {
+  return requestConnectApi<T>(connection, path, { method: 'DELETE', apiVersion });
+}
