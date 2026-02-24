@@ -54,7 +54,8 @@ export class RollbackService {
   public static async rollbackServiceProcessOnly(
     connection: Connection,
     targetServiceProcessId: string,
-    logger?: Logger
+    logger?: Logger,
+    onProgress?: (step: string, status: 'start' | 'complete') => void
   ): Promise<void> {
     logger?.log?.('Starting Scenario 1 rollback: Unlink artifacts, delete Service Process');
 
@@ -64,13 +65,17 @@ export class RollbackService {
     // Step 2: Unlink artifacts if any are linked (from deployment API)
     if (needsUnlink) {
       logger?.log?.('Artifacts are linked, unlinking before deletion...');
+      onProgress?.('Unlinking components', 'start');
       await this.unlinkComponents(connection, targetServiceProcessId, logger);
+      onProgress?.('Unlinking components', 'complete');
     } else {
       logger?.log?.('No artifacts linked, proceeding to deletion.');
     }
 
     // Step 3: Delete Service Process
+    onProgress?.('Removing Service Process', 'start');
     await this.deleteServiceProcess(connection, targetServiceProcessId, logger);
+    onProgress?.('Removing Service Process', 'complete');
 
     logger?.log?.('Scenario 1 rollback completed.');
   }
@@ -83,7 +88,8 @@ export class RollbackService {
   public static async rollbackServiceProcessAndFlows(
     connection: Connection,
     rollbackData: RollbackData,
-    logger?: Logger
+    logger?: Logger,
+    onProgress?: (step: string, status: 'start' | 'complete') => void
   ): Promise<void> {
     logger?.log?.('Starting Scenario 2 rollback: Unlink artifacts, delete flows, delete Service Process');
 
@@ -95,20 +101,26 @@ export class RollbackService {
     // Step 2: Unlink artifacts if any are linked (from deployment API or PATCH API)
     if (needsUnlink) {
       logger?.log?.('Artifacts are linked, unlinking before deletion...');
+      onProgress?.('Unlinking components', 'start');
       await this.unlinkComponents(connection, targetServiceProcessId, logger);
+      onProgress?.('Unlinking components', 'complete');
     } else {
       logger?.log?.('No artifacts linked, proceeding to deletion.');
     }
 
     // Step 3: Delete newly deployed flows
     if (deployedFlows && deployedFlows.length > 0) {
+      onProgress?.('Deleting deployed flows', 'start');
       await this.deleteDeployedFlows(connection, deployedFlows, logger);
+      onProgress?.('Deleting deployed flows', 'complete');
     } else {
       logger?.log?.('No flows to delete.');
     }
 
     // Step 4: Delete Service Process
+    onProgress?.('Removing Service Process', 'start');
     await this.deleteServiceProcess(connection, targetServiceProcessId, logger);
+    onProgress?.('Removing Service Process', 'complete');
 
     logger?.log?.('Scenario 2 rollback completed.');
   }

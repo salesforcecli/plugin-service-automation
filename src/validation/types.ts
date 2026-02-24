@@ -71,6 +71,10 @@ export type ValidationContext = {
   fulfillmentFlow?: FlowReference;
   /** Optional: target org namespace for deployment uniqueness checks. */
   targetOrgNamespace?: string | null;
+  /** Optional: callback when a validator starts executing. */
+  onValidatorStart?: (validatorName: string, description: string) => void;
+  /** Optional: callback when a validator completes (success or failure). */
+  onValidatorComplete?: (validatorName: string, success: boolean) => void;
 };
 
 /**

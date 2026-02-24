@@ -89,13 +89,11 @@ export async function deployFlows(
   });
 
   const result = await deploy.pollStatus();
-  const logResponse =
-    logJson ??
-    ((data: unknown): void => {
-      // eslint-disable-next-line no-console
-      console.log(JSON.stringify(data, null, 2));
-    });
-  logResponse(result.response);
+
+  // Only log JSON if logJson callback is provided (verbose mode)
+  if (logJson) {
+    logJson(result.response);
+  }
 
   const status = result.response.status as string;
   if (status !== 'Succeeded') {

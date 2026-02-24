@@ -62,6 +62,15 @@ export type DeploymentContext = {
   logger?: Logger;
   logJson?: LogJsonFn;
 
+  // Timing
+  startTime: number;
+  phaseTimings: Map<string, number>;
+
+  /**
+   * Record phase execution time
+   */
+  recordPhaseTime(phase: string, durationMs: number): void;
+
   /**
    * Cleanup all resources (workspace and zip)
    */
@@ -99,6 +108,11 @@ export function createDeploymentContext(options: {
       needed: false,
     },
     cleanupWorkspace: options.cleanupWorkspace,
+    startTime: Date.now(),
+    phaseTimings: new Map(),
+    recordPhaseTime(phase: string, durationMs: number) {
+      this.phaseTimings.set(phase, durationMs);
+    },
     cleanup() {
       this.cleanupWorkspaceZip?.();
       this.cleanupWorkspace();

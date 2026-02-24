@@ -18,8 +18,9 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { SfCommand, Flags } from '@salesforce/sf-plugins-core';
 import { Messages, SfError } from '@salesforce/core';
-import type { DeployError } from '../../errors.js';
+import { DeployError, ValidationError } from '../../errors.js';
 import { DeployService } from '../../services/deployserviceprocess.js';
+import { DeploymentStages } from '../../utils/deploymentStages.js';
 
 Messages.importMessagesDirectoryFromMetaUrl(import.meta.url);
 const messages = Messages.loadMessages('@salesforce/plugin-service-automation', 'service-process.deploy');
@@ -64,6 +65,12 @@ export default class ServiceProcessDeploy extends SfCommand<ServiceProcessDeploy
         return input;
       },
     }),
+    verbose: Flags.boolean({
+      char: 'v',
+      default: false,
+      summary: 'Show detailed deployment information',
+      description: 'Show detailed deployment information including IDs, endpoints, and timings',
+    }),
   };
 
   public async run(): Promise<ServiceProcessDeployResult> {
@@ -73,46 +80,69 @@ export default class ServiceProcessDeploy extends SfCommand<ServiceProcessDeploy
     if (inputZip == null || inputZip === '') {
       throw new SfError('Required flag input-zip is missing.', 'MissingRequiredFlag');
     }
-    const org = flags['target-org'];
-    const username = org.getUsername();
-    if (username) {
-      this.log(`Deploying to org: ${username}`);
-    }
-    this.log(`Input zip file: ${inputZip}`);
+    const verbose = flags.verbose;
 
-    const apiVersion = flags['api-version'];
-    const connection = org.getConnection(apiVersion);
-    this.log(`Org API version: ${connection.getApiVersion()}`);
+    // Initialize DeploymentStages for UI
+    const deployStages = new DeploymentStages(
+      this,
+      'Service Process Deployment',
+      flags['target-org'].getConnection().instanceUrl
+    );
+    deployStages.start();
 
     let result;
     try {
       const deployService = new DeployService({
         org: flags['target-org'],
-        expectedApiVersion: apiVersion,
+        expectedApiVersion: flags['api-version'],
+        command: this,
+        verbose,
+        deployStages,
         logger: {
           log: (msg: string) => this.log(msg),
           logJson: this.logJson.bind(this),
         },
       });
       result = await deployService.deploy(inputZip);
+      // deployStages.stop() is called inside deploy() for success case
     } catch (err) {
       const deployErr = err as DeployError;
+
+      // Check if this error was already formatted and displayed by DeploymentStages
+      // If failPhase was called with a custom format, the error message would have been shown
+      // and MSO stopped, so we should just exit without rethrowing
+      const wasFormattedByDeploymentStages =
+        (err instanceof ValidationError && Boolean(err.failures)) ||
+        deployErr?.code === 'TemplateDeployFailed' ||
+        deployErr?.code === 'FlowDeploymentFailed' ||
+        deployErr?.code === 'FinalizationFailed';
+
+      if (wasFormattedByDeploymentStages) {
+        // Error was already displayed nicely by DeploymentStages, just exit
+        process.exit(1);
+      }
+
+      // For other DeployErrors, stop MSO and rethrow
       if (deployErr?.code) {
+        deployStages.stop();
         throw new SfError(deployErr.message, deployErr.code);
       }
+
+      // For generic errors, stop MSO and rethrow
+      deployStages.stop();
       throw err;
     }
 
-    this.log('Deploy completed successfully.');
-    if (result.contentDocumentId) {
-      this.log(`Content Document ID: ${result.contentDocumentId}`);
+    // JSON mode - structured output only
+    if (this.jsonEnabled()) {
+      return {
+        path: inputZip,
+        contentDocumentId: result.contentDocumentId,
+        deployedFlows: result.deployedFlows,
+      };
     }
-    if (result.deployedFlows?.length) {
-      for (const f of result.deployedFlows) {
-        const defId = f.definitionId ? ` (definitionId: ${f.definitionId})` : '';
-        this.log(`${f.id} for ${f.fullName}${defId}`);
-      }
-    }
+
+    // Default mode - output is already handled by DeploymentStages
     return {
       path: inputZip,
       contentDocumentId: result.contentDocumentId,
