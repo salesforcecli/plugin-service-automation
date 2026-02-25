@@ -806,6 +806,7 @@ export class DeployService {
     rollbackStages.start();
 
     const rollbackStartTime = Date.now();
+    let rollbackFailed = false;
 
     try {
       const rollbackData: RollbackData = {
@@ -833,12 +834,8 @@ export class DeployService {
       const duration = Date.now() - rollbackStartTime;
       rollbackStages.finish(duration);
     } catch (rollbackError) {
-      // Mark rollback as failed
+      rollbackFailed = true;
       rollbackStages.fail(rollbackError as Error);
-
-      if (this.command && !this.command.jsonEnabled()) {
-        this.command.log('Manual cleanup in the target org is required.\n');
-      }
       // Don't re-throw: original error is more important
     }
 
@@ -846,6 +843,18 @@ export class DeployService {
       this.command.log('Status: Failed');
       const totalDuration = Date.now() - deploymentStartTime;
       this.command.log(`Total Elapsed Time: ${DeployService.formatElapsedTime(totalDuration)}\n`);
+      // Manual cleanup when rollback failed (shown once after Status/Time)
+      if (rollbackFailed) {
+        this.command.log('Manual cleanup in the target org is required. Delete the following artifacts:\n');
+        this.command.log(`  Service Process (Product2): ${context.targetServiceProcessId}`);
+        if (context.deployedFlows && context.deployedFlows.length > 0) {
+          this.command.log('  Deployed flows (InteractionDefinitionVersion / Flow):');
+          for (const f of context.deployedFlows) {
+            this.command.log(`    - ${f.fullName} (ID: ${f.id ?? 'unknown'})`);
+          }
+        }
+        this.command.log('');
+      }
     }
   }
 
@@ -857,21 +866,15 @@ export class DeployService {
     logger?: Logger,
     onProgress?: (step: string, status: 'start' | 'complete') => void
   ): Promise<void> {
-    try {
-      if (scenario === RollbackScenario.ServiceProcessOnly) {
-        await RollbackService.rollbackServiceProcessOnly(
-          connection,
-          rollbackData.targetServiceProcessId,
-          logger,
-          onProgress
-        );
-      } else if (scenario === RollbackScenario.ServiceProcessAndFlows) {
-        await RollbackService.rollbackServiceProcessAndFlows(connection, rollbackData, logger, onProgress);
-      }
-    } catch (rollbackError) {
-      // Rollback failure is already logged in handleRollback
-      // Use --verbose flag if needed for debugging
-      // Don't re-throw: original error is more important
+    if (scenario === RollbackScenario.ServiceProcessOnly) {
+      await RollbackService.rollbackServiceProcessOnly(
+        connection,
+        rollbackData.targetServiceProcessId,
+        logger,
+        onProgress
+      );
+    } else if (scenario === RollbackScenario.ServiceProcessAndFlows) {
+      await RollbackService.rollbackServiceProcessAndFlows(connection, rollbackData, logger, onProgress);
     }
   }
 }

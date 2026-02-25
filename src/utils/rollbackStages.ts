@@ -77,7 +77,8 @@ export class RollbackStages {
   }
 
   private static formatDuration(ms: number): string {
-    if (ms <= 0) return '0s';
+    if (ms <= 0) return '0ms';
+    if (ms < 1000) return `${ms}ms`;
     const totalSeconds = ms / 1000;
     if (totalSeconds < 60) {
       return `${totalSeconds.toFixed(2)}s`;
@@ -93,15 +94,20 @@ export class RollbackStages {
     this.mso.next();
   }
 
-  /** Record that a step is starting (for timing). */
+  /** Step starting: go to this stage (like deployment startPhase/goto) so previous stage shows ✔ and this one gets spinner. */
   public gotoStage(step: string): void {
     if (this.command.jsonEnabled()) return;
     this.stageStartTimes.set(step, Date.now());
+    this.mso.goto(step);
   }
 
-  /** Step finished: advance to next stage so current shows ✔ and next shows live timer. */
+  /** Step finished: set duration for current stage and advance (like deployment succeedPhase + next). */
   public succeedStage(step: string): void {
     if (this.command.jsonEnabled()) return;
+    const start = this.stageStartTimes.get(step);
+    const durationMs = start != null ? Date.now() - start : 0;
+    this.mso.updateData({ duration: RollbackStages.formatDuration(durationMs) });
+    this.stageStartTimes.delete(step);
     if (step !== this.lastStage) {
       this.mso.next();
     }

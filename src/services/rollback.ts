@@ -305,5 +305,8 @@ export class RollbackService {
     }
 
     logger?.log?.(`Flow deletion summary: ${successCount} succeeded, ${failureCount} failed`);
+    if (failureCount > 0) {
+      throw new Error(`Failed to delete ${failureCount} flow(s) during rollback (${successCount} succeeded).`);
+    }
   }
 }
