@@ -68,8 +68,8 @@ export default class ServiceProcessDeploy extends SfCommand<ServiceProcessDeploy
     verbose: Flags.boolean({
       char: 'v',
       default: false,
-      summary: 'Show detailed deployment information',
-      description: 'Show detailed deployment information including IDs, endpoints, and timings',
+      summary: messages.getMessage('flags.verbose.summary'),
+      description: messages.getMessage('flags.verbose.description'),
     }),
   };
 
@@ -83,10 +83,11 @@ export default class ServiceProcessDeploy extends SfCommand<ServiceProcessDeploy
     const verbose = flags.verbose;
 
     // Initialize DeploymentStages for UI
+    const apiVersion = flags['api-version'];
     const deployStages = new DeploymentStages(
       this,
       'Service Process Deployment',
-      flags['target-org'].getConnection().instanceUrl
+      flags['target-org'].getConnection(apiVersion).instanceUrl
     );
     deployStages.start();
 
@@ -115,6 +116,7 @@ export default class ServiceProcessDeploy extends SfCommand<ServiceProcessDeploy
         (err instanceof ValidationError && Boolean(err.failures)) ||
         deployErr?.code === 'TemplateDeployFailed' ||
         deployErr?.code === 'FlowDeploymentFailed' ||
+        deployErr?.code === 'TestFlowDeploymentFailure' ||
         deployErr?.code === 'FinalizationFailed';
 
       if (wasFormattedByDeploymentStages) {

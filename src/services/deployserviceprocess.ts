@@ -31,7 +31,7 @@ import type { DeployedFlowNames } from '../workspace/serviceProcessTransformer.j
 import { ValidationRunner, builtInValidatorsWithMetadata } from '../validation/index.js';
 import type { LogJsonFn, Logger, ValidationContext } from '../validation/types.js';
 import { DeploymentStages, type TreeItem } from '../utils/deploymentStages.js';
-import { RollbackStages } from '../utils/rollbackStages.js';
+import { RollbackStages, ROLLBACK_SECTION_HEADER } from '../utils/rollbackStages.js';
 import { defaults, type DeployServiceProcessDependencies } from './deployDependencies.js';
 import { CatalogItemPatcher } from './catalogItemPatch.js';
 import { RollbackService, RollbackScenario, type RollbackData } from './rollback.js';
@@ -75,6 +75,9 @@ export class DeployService {
   private readonly logger?: Logger;
   private readonly logJson?: LogJsonFn;
   private readonly deps: Required<DeployServiceProcessDependencies>;
+
+  /** Buffered verbose lines when MSO is active to avoid breaking the display; flushed after stop(). */
+  private verboseBuffer: string[] = [];
 
   public constructor(options: DeployServiceOptions) {
     this.org = options.org;
@@ -131,12 +134,20 @@ export class DeployService {
     return items;
   }
 
+  /** Format milliseconds as "Xm Y.YYs" or "Y.YYs". */
+  private static formatElapsedTime(ms: number): string {
+    const totalMinutes = Math.floor(ms / 60_000);
+    const totalSeconds = ((ms % 60_000) / 1000).toFixed(2);
+    return totalMinutes > 0 ? `${totalMinutes}m ${totalSeconds}s` : `${totalSeconds}s`;
+  }
+
   /**
    * Main deployment orchestrator.
    * Coordinates the 5 deployment phases: prepare, validate, deploy SP, deploy flows, and rollback (if needed).
    */
   public async deploy(inputZip: string): Promise<DeployServiceProcessResult> {
     const deploymentStartTime = Date.now();
+    this.verboseBuffer = [];
 
     // Phase 1: Prepare deployment (extract workspace, read metadata, validate inputs)
     this.deployStages?.startPhase('Preparing connection');
@@ -172,9 +183,25 @@ export class DeployService {
           skippedToDone = true;
         }
 
+        // TEST FAILURE INJECTION POINT (for testing rollback functionality)
+        // Set environment variable FORCE_DEPLOY_METADATA_FAILURE=true to trigger test failure
+        // Example: FORCE_DEPLOY_METADATA_FAILURE=true sf service-process deploy --target-org myorg --input-zip test.zip
+        // This tests Scenario 2 rollback: deletes both deployed flows AND Service Process
+        if (process.env.FORCE_DEPLOY_METADATA_FAILURE === 'true') {
+          throw new DeployError(
+            'Test failure triggered before flow deployment (FORCE_DEPLOY_METADATA_FAILURE=true)',
+            'TestFlowDeploymentFailure'
+          );
+        }
         // Success! Disable rollback
         context.rollback.needed = false;
       } catch (error) {
+        // Stop deploy MSO and show failure first so output order is: deploy failure → rollback → status (not rollback then deploy).
+        // Only needed for TestFlowDeploymentFailure; FlowDeploymentFailed/FinalizationFailed already called failPhase in their phase.
+        const isTestFailure = (error as DeployError)?.code === 'TestFlowDeploymentFailure';
+        if (context.rollback.needed && this.deployStages && isTestFailure) {
+          this.deployStages.failPhase('Deploying metadata', error as Error);
+        }
         // Phase 5: Handle rollback if flow deployment/linking fails
         await this.handleRollback(context, error as Error, deploymentStartTime);
         throw error;
@@ -188,6 +215,8 @@ export class DeployService {
 
       // Stop MSO before logging summary to prevent output reordering
       this.deployStages?.stop();
+
+      this.flushVerboseBuffer();
 
       if (this.deployStages) {
         const linkedCount = this.countLinkedComponents(context);
@@ -209,6 +238,34 @@ export class DeployService {
     } finally {
       context.cleanup();
     }
+  }
+
+  /**
+   * When MSO is active, return a logger that buffers output so command.log() doesn't break the display.
+   * Flush with flushVerboseBuffer() after deployStages.stop().
+   */
+  private getEffectiveLogger(): Logger | undefined {
+    if (!this.logger) return undefined;
+    if (this.deployStages && this.command && !this.command.jsonEnabled()) {
+      return {
+        log: (msg: string): void => {
+          this.verboseBuffer.push(msg);
+        },
+        logJson: (data: unknown): void => {
+          this.verboseBuffer.push(typeof data === 'string' ? data : JSON.stringify(data, null, 2));
+        },
+      };
+    }
+    return this.logger;
+  }
+
+  private flushVerboseBuffer(): void {
+    if (this.verboseBuffer.length === 0) return;
+    if (this.command && !this.command.jsonEnabled()) {
+      this.command.log('\n--- Verbose output ---');
+      this.verboseBuffer.forEach((line) => this.command!.log(line));
+    }
+    this.verboseBuffer = [];
   }
 
   /**
@@ -296,7 +353,8 @@ export class DeployService {
    * Returns a DeploymentContext with all necessary state for the deployment.
    */
   private async prepareDeployment(inputZip: string): Promise<DeploymentContext> {
-    const { org, logger, logJson } = this;
+    const { org, logJson } = this;
+    const logger = this.getEffectiveLogger() ?? this.logger;
 
     // Extract workspace
     const { workspace, cleanup: cleanupWorkspace } = await DeployWorkspace.extractZipToWorkspace(inputZip);
@@ -465,7 +523,8 @@ export class DeployService {
     const phaseStart = Date.now();
 
     try {
-      const { logger, deps } = this;
+      const { deps } = this;
+      const logger = this.getEffectiveLogger() ?? this.logger;
       const targetOrgNamespace = await getOrgNamespace(context.org.getConnection());
 
       // Transform templateData.json
@@ -598,7 +657,8 @@ export class DeployService {
    * NOTE: This method should only be called when deployment is actually needed (checked by caller).
    */
   private async deployMetadata(context: DeploymentContext): Promise<void> {
-    const { logger, logJson, deps } = this;
+    const { logJson, deps } = this;
+    const logger = this.getEffectiveLogger() ?? this.logger;
 
     this.deployStages?.startPhase('Deploying metadata');
     const deployStart = Date.now();
@@ -679,17 +739,6 @@ export class DeployService {
       // eslint-disable-next-line no-param-reassign
       context.rollback.scenario = RollbackScenario.ServiceProcessAndFlows;
 
-      // TEST FAILURE INJECTION POINT (for testing rollback functionality)
-      // Set environment variable FORCE_DEPLOY_METADATA_FAILURE=true to trigger test failure
-      // Example: FORCE_DEPLOY_METADATA_FAILURE=true sf service-process deploy --target-org myorg --input-zip test.zip
-      // This tests Scenario 2 rollback: deletes both deployed flows AND Service Process
-      if (process.env.FORCE_DEPLOY_METADATA_FAILURE === 'true') {
-        throw new DeployError(
-          'Test failure triggered after flow deployment (FORCE_DEPLOY_METADATA_FAILURE=true)',
-          'TestFlowDeploymentFailure'
-        );
-      }
-
       this.deployStages?.succeedPhase('Deploying metadata');
       context.recordPhaseTime('deployMetadata', Date.now() - deployStart);
     } catch (error) {
@@ -703,9 +752,9 @@ export class DeployService {
    * Phase 4b: Finalize deployment (link flows to Service Process via catalog item patching).
    */
   private async finalizeDeployment(context: DeploymentContext): Promise<void> {
-    const { logger } = this;
+    const logger = this.getEffectiveLogger() ?? this.logger;
 
-    this.deployStages?.startPhase('Finalizing deployment');
+    this.deployStages?.startPhase('Linking deployed components');
     const finalizeStart = Date.now();
 
     try {
@@ -721,10 +770,10 @@ export class DeployService {
         );
       }
 
-      this.deployStages?.succeedPhase('Finalizing deployment');
+      this.deployStages?.succeedPhase('Linking deployed components');
       context.recordPhaseTime('finalize', Date.now() - finalizeStart);
     } catch (error) {
-      this.deployStages?.failPhase('Finalizing deployment', error as Error);
+      this.deployStages?.failPhase('Linking deployed components', error as Error);
       const message = error instanceof Error ? error.message : String(error);
       throw new DeployError(message, 'FinalizationFailed');
     }
@@ -745,12 +794,18 @@ export class DeployService {
       return;
     }
 
-    // Create separate MSO instance for rollback
-    const rollbackStages = new RollbackStages(this.command!);
+    // Clear deploy tree so "Service Process Created" is not shown when command's catch calls deployStages.stop()
+    this.deployStages?.clearTreeStructure();
+
+    // Print header first so it appears before the MSO stage and any step logs
+    if (this.command && !this.command.jsonEnabled()) {
+      this.command.log(ROLLBACK_SECTION_HEADER);
+    }
+
+    const rollbackStages = new RollbackStages(this.command!, context.rollback.scenario!);
     rollbackStages.start();
 
     const rollbackStartTime = Date.now();
-    const completedSteps: Array<{ label: string; value: string }> = [];
 
     try {
       const rollbackData: RollbackData = {
@@ -759,15 +814,14 @@ export class DeployService {
         deployedFlowNames: context.deployedFlowNames,
       };
 
-      // Progress callback updates RollbackStages
       const onProgress = (step: string, status: 'start' | 'complete'): void => {
-        if (status === 'complete') {
-          completedSteps.push({ label: '', value: `${step}` });
-          rollbackStages.updateProgress(completedSteps);
+        if (status === 'start') {
+          rollbackStages.gotoStage(step);
+        } else {
+          rollbackStages.succeedStage(step);
         }
       };
 
-      // Perform rollback with progress updates
       await this.performRollback(
         context.org.getConnection(),
         context.rollback.scenario!,
@@ -776,38 +830,22 @@ export class DeployService {
         onProgress
       );
 
-      // Mark rollback as successful
       const duration = Date.now() - rollbackStartTime;
-      rollbackStages.succeed(duration);
-
-      // Show completion note and total elapsed time
-      if (this.command && !this.command.jsonEnabled()) {
-        this.command.log('\nNote: Some data created during deployment cannot be automatically removed.');
-        this.command.log('Manual cleanup in the target org may be required.\n');
-
-        // Show global elapsed time
-        const totalDuration = Date.now() - deploymentStartTime;
-        const totalMinutes = Math.floor(totalDuration / 60_000);
-        const totalSeconds = ((totalDuration % 60_000) / 1000).toFixed(2);
-        const totalTimeStr = totalMinutes > 0 ? `${totalMinutes}m ${totalSeconds}s` : `${totalSeconds}s`;
-        this.command.log(`Total Elapsed Time: ${totalTimeStr}\n`);
-      }
+      rollbackStages.finish(duration);
     } catch (rollbackError) {
       // Mark rollback as failed
       rollbackStages.fail(rollbackError as Error);
 
-      // Show additional context and total elapsed time
       if (this.command && !this.command.jsonEnabled()) {
         this.command.log('Manual cleanup in the target org is required.\n');
-
-        // Show global elapsed time even on rollback failure
-        const totalDuration = Date.now() - deploymentStartTime;
-        const totalMinutes = Math.floor(totalDuration / 60_000);
-        const totalSeconds = ((totalDuration % 60_000) / 1000).toFixed(2);
-        const totalTimeStr = totalMinutes > 0 ? `${totalMinutes}m ${totalSeconds}s` : `${totalSeconds}s`;
-        this.command.log(`Total Elapsed Time: ${totalTimeStr}\n`);
       }
       // Don't re-throw: original error is more important
+    }
+
+    if (this.command && !this.command.jsonEnabled()) {
+      this.command.log('Status: Failed');
+      const totalDuration = Date.now() - deploymentStartTime;
+      this.command.log(`Total Elapsed Time: ${DeployService.formatElapsedTime(totalDuration)}\n`);
     }
   }
 

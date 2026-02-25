@@ -20,6 +20,14 @@ Path to a zip file containing metadata for deployment.
 
 Path to a zip file containing metadata for deployment.
 
+# flags.verbose.summary
+
+Show detailed deployment information.
+
+# flags.verbose.description
+
+Show detailed deployment information including IDs, endpoints, and timings.
+
 # examples
 
 - Deploy a Service Process from a zip file:

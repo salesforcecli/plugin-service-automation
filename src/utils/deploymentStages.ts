@@ -31,7 +31,7 @@ type DeploymentPhase =
   | 'Validating deployment'
   | 'Creating Service Process'
   | 'Deploying metadata'
-  | 'Finalizing deployment'
+  | 'Linking deployed components'
   | 'Done';
 
 /**
@@ -85,7 +85,7 @@ export class DeploymentStages {
         'Validating deployment',
         'Creating Service Process',
         'Deploying metadata',
-        'Finalizing deployment',
+        'Linking deployed components',
         'Done',
       ],
       jsonEnabled: command.jsonEnabled(),
@@ -235,12 +235,12 @@ export class DeploymentStages {
       this.mso.updateData({ duration: durationStr, error: '' });
       this.mso.error();
 
-      this.command.log(`\n${DeploymentStages.RED}Flow Deployment Failed${DeploymentStages.RESET}`);
+      this.command.log(`\n${DeploymentStages.RED}ERROR: Flow Deployment Failed${DeploymentStages.RESET}`);
 
       // Extract clean error message
       const cleanMessage = this.extractErrorMessage(error);
       this.command.log(`   ${cleanMessage}`);
-    } else if (phase === 'Finalizing deployment') {
+    } else if (phase === 'Linking deployed components') {
       // Special handling for finalization failures (catalog item patching)
       this.mso.updateData({ duration: durationStr, error: '' });
       this.mso.error();
@@ -299,6 +299,11 @@ export class DeploymentStages {
 
     // Store tree structure to display after MSO stops
     this.treeStructure = { name, items };
+  }
+
+  /** Clear stored tree so stop() does not show "Service Process Created" (e.g. on rollback/failure). */
+  public clearTreeStructure(): void {
+    this.treeStructure = undefined;
   }
 
   public logSummary(summary: DeploymentSummary): void {

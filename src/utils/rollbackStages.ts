@@ -16,6 +16,32 @@
 
 import { MultiStageOutput } from '@oclif/multi-stage-output';
 import type { SfCommand } from '@salesforce/sf-plugins-core';
+import { RollbackScenario } from '../services/rollback.js';
+
+/** Rollback step names from the rollback service (order matches execution). */
+export const ROLLBACK_STEP_NAMES = [
+  'Unlinking components',
+  'Deleting deployed flows',
+  'Removing Service Process',
+] as const;
+
+/** All rollback stages when flows were deployed (ServiceProcessAndFlows). */
+const ROLLBACK_STAGES_WITH_FLOWS = [
+  'Initializing Rollback',
+  'Unlinking components',
+  'Deleting deployed flows',
+  'Removing Service Process',
+] as const;
+
+/** Stages when only Service Process was created (ServiceProcessOnly) - no "Deleting deployed flows". */
+const ROLLBACK_STAGES_SERVICE_PROCESS_ONLY = [
+  'Initializing Rollback',
+  'Unlinking components',
+  'Removing Service Process',
+] as const;
+
+/** Header line for the rollback section. Print this first, then create/start RollbackStages. */
+export const ROLLBACK_SECTION_HEADER = '\n──────── Service Process Rollback ────────';
 
 type StageData = {
   duration?: string;
@@ -23,62 +49,74 @@ type StageData = {
 };
 
 /**
- * Wrapper for MultiStageOutput to display rollback progress.
- * Creates a separate MSO instance for rollback, shown only when deployment fails.
+ * Rollback UI: each step is an MSO stage with a live timer while running; on completion ✔ and move to next.
+ * Caller must log ROLLBACK_SECTION_HEADER first.
+ * When scenario is ServiceProcessOnly, "Deleting deployed flows" is omitted (no flows were deployed).
  */
 export class RollbackStages {
   private mso: MultiStageOutput<StageData>;
   private command: SfCommand<unknown>;
-  private rollbackItems?: Array<{ label: string; value: string }>;
+  private stageStartTimes = new Map<string, number>();
+  private readonly stages: readonly string[];
+  private readonly lastStage: string;
 
-  public constructor(command: SfCommand<unknown>) {
+  public constructor(command: SfCommand<unknown>, scenario: RollbackScenario) {
     this.command = command;
+    this.stages =
+      scenario === RollbackScenario.ServiceProcessOnly
+        ? ROLLBACK_STAGES_SERVICE_PROCESS_ONLY
+        : ROLLBACK_STAGES_WITH_FLOWS;
+    this.lastStage = this.stages[this.stages.length - 1];
 
     this.mso = new MultiStageOutput<StageData>({
-      title: 'Service Process Rollback',
-      stages: ['Rolling back changes'],
+      stages: [...this.stages],
       jsonEnabled: command.jsonEnabled(),
-      stageSpecificBlock: [
-        {
-          stage: 'Rolling back changes',
-          type: 'message',
-          get: (): string | undefined => {
-            if (!this.rollbackItems || this.rollbackItems.length === 0) return undefined;
-            const lines = this.rollbackItems.map((item) =>
-              item.label ? `  ${item.label}: ${item.value}` : `  ${item.value}`
-            );
-            return lines.join('\n');
-          },
-        },
-      ],
+      showElapsedTime: true,
+      showStageTime: true,
     });
   }
 
+  private static formatDuration(ms: number): string {
+    if (ms <= 0) return '0s';
+    const totalSeconds = ms / 1000;
+    if (totalSeconds < 60) {
+      return `${totalSeconds.toFixed(2)}s`;
+    }
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = (totalSeconds % 60).toFixed(2);
+    return `${minutes}m ${seconds}s`;
+  }
+
   public start(): void {
-    if (!this.command.jsonEnabled()) {
-      this.mso.goto('Rolling back changes');
+    if (this.command.jsonEnabled()) return;
+    this.mso.goto(this.stages[0]);
+    this.mso.next();
+  }
+
+  /** Record that a step is starting (for timing). */
+  public gotoStage(step: string): void {
+    if (this.command.jsonEnabled()) return;
+    this.stageStartTimes.set(step, Date.now());
+  }
+
+  /** Step finished: advance to next stage so current shows ✔ and next shows live timer. */
+  public succeedStage(step: string): void {
+    if (this.command.jsonEnabled()) return;
+    if (step !== this.lastStage) {
+      this.mso.next();
     }
   }
 
-  public updateProgress(items: Array<{ label: string; value: string }>): void {
-    if (!this.command.jsonEnabled()) {
-      this.rollbackItems = items;
-      this.mso.updateData({});
-    }
-  }
-
-  public succeed(duration: number): void {
-    if (!this.command.jsonEnabled()) {
-      const durationStr = (duration / 1000).toFixed(2);
-      this.mso.updateData({ duration: `${durationStr}s` });
-      this.mso.stop();
-    }
+  /** All steps done: stop MSO (last stage gets ✔, Elapsed Time shown). */
+  public finish(totalDurationMs: number): void {
+    if (this.command.jsonEnabled()) return;
+    this.mso.updateData({ duration: RollbackStages.formatDuration(totalDurationMs) });
+    this.mso.stop();
   }
 
   public fail(error: Error): void {
-    if (!this.command.jsonEnabled()) {
-      this.mso.updateData({ error: error.message });
-      this.mso.error();
-    }
+    if (this.command.jsonEnabled()) return;
+    this.mso.updateData({ error: error.message });
+    this.mso.error();
   }
 }
