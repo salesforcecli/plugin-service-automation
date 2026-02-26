@@ -45,7 +45,7 @@ export function getValidationErrorHeader(error: ValidationError): string {
   const onlyDuplicateFlows = categorized.size === 1 && duplicateFlows && duplicateFlows.length > 0;
 
   if (onlyDuplicateFlows) {
-    return 'Validation failed — duplicate flows found in target org:';
+    return 'Duplicate flows found in target org:';
   }
 
   // Check what types of errors we have
@@ -57,12 +57,30 @@ export function getValidationErrorHeader(error: ValidationError): string {
   if (categorized.get(ErrorCategory.FlowDeployment)) categories.push('flow deployment errors');
 
   if (categories.length === 1) {
-    return `Validation failed — ${categories[0]}:`;
-  } else if (categories.length > 1) {
-    return 'Validation failed:';
+    return getCategoryHeader(categories[0]);
+  }
+  if (categories.length > 1) {
+    return 'Validation issues:';
   }
 
   return 'Validation failed';
+}
+
+function getCategoryHeader(category: string): string {
+  switch (category) {
+    case 'duplicate flows':
+      return 'Duplicate flows found in target org:';
+    case 'missing dependencies':
+      return 'Missing dependencies:';
+    case 'flow link failures':
+      return 'Flow link failures:';
+    case 'API version issues':
+      return 'API version issues:';
+    case 'flow deployment errors':
+      return 'Flow deployment errors:';
+    default:
+      return `${category}:`;
+  }
 }
 
 // Helper functions to reduce complexity
@@ -166,7 +184,7 @@ export function formatValidationError(error: ValidationError, verbose: boolean):
 
   if (!error.failures || error.failures.length === 0) {
     // Fallback: no structured data
-    lines.push(`Validation failed: ${error.message}`);
+    lines.push(error.message);
     lines.push('');
     lines.push('Deployment aborted.');
     if (!verbose) {
@@ -183,15 +201,12 @@ export function formatValidationError(error: ValidationError, verbose: boolean):
   const onlyDuplicateFlows = categorized.size === 1 && duplicateFlows && duplicateFlows.length > 0;
 
   if (onlyDuplicateFlows) {
-    lines.push('Validation failed — duplicate flows found in target org:');
+    lines.push('Duplicate flows found in target org:');
     lines.push('');
     formatDuplicateFlowsSection(duplicateFlows, lines, verbose);
     lines.push('');
   } else {
-    lines.push('Validation failed:');
-    lines.push('');
-
-    // Format each category
+    // Format each category (no generic "Validation failed" header)
     if (duplicateFlows && duplicateFlows.length > 0) {
       lines.push('Duplicate flows found in target org:');
       formatDuplicateFlowsSection(duplicateFlows, lines, verbose);

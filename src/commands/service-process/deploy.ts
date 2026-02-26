@@ -118,7 +118,8 @@ export default class ServiceProcessDeploy extends SfCommand<ServiceProcessDeploy
         logger.debug(`[${runId}] Deploy failed (raw): ${rawMessage}`);
         deployStages.stop();
         const code = deployErr?.code ?? 'ValidationFailed';
-        throw new SfError(deployErr?.message ?? formattedMessage, code);
+        const message = (deployErr?.message ?? formattedMessage).replace(/^Validation failed:\s*/i, '');
+        throw new SfError(message, code);
       }
 
       // For other DeployErrors, stop MSO and rethrow
@@ -126,7 +127,8 @@ export default class ServiceProcessDeploy extends SfCommand<ServiceProcessDeploy
         logger.error(`[${runId}] Deploy failed [inputZip=${inputZip}]: ${formattedMessage}`);
         logger.debug(`[${runId}] Deploy failed (raw): ${rawMessage}`);
         deployStages.stop();
-        throw new SfError(deployErr.message, deployErr.code);
+        const message = deployErr.message.replace(/^Validation failed:\s*/i, '');
+        throw new SfError(message, deployErr.code);
       }
 
       // Generic errors
