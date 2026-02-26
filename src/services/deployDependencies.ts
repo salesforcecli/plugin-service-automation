@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import type { Connection, Org } from '@salesforce/core';
+import type { Connection, Org, Logger } from '@salesforce/core';
 import { CONNECT_TEMPLATE_DEPLOY_PATH_PREFIX } from '../constants.js';
 import { postConnect } from '../utils/api/connectApi.js';
 import { createContentDocumentFromFile } from '../utils/api/contentDocument.js';
@@ -22,7 +22,6 @@ import { deployFlows, type DeployedFlowInfo } from '../utils/flow/deployflow.js'
 import { FlowTransformer, type FlowTransformerResult } from '../workspace/flowTransformer.js';
 import { ServiceProcessTransformer, type DeployedFlowNames } from '../workspace/serviceProcessTransformer.js';
 import type { DeploymentMetadata } from '../workspace/deploymentMetadata.js';
-import type { LogJsonFn, Logger } from '../validation/types.js';
 
 /** Injected dependencies for testing; defaults to real implementations when not provided. */
 export type DeployServiceProcessDependencies = {
@@ -45,7 +44,7 @@ export type DeployServiceProcessDependencies = {
   deployFlowsFn?: (
     org: Org,
     filePaths: string[],
-    options: { checkOnly: boolean; logJson?: LogJsonFn }
+    options: { checkOnly: boolean; logger?: Logger }
   ) => Promise<DeployedFlowInfo[]>;
 };
 
@@ -76,6 +75,6 @@ export const defaults = {
   deployFlowsFn: (
     org: Org,
     filePaths: string[],
-    options: { checkOnly: boolean; logJson?: LogJsonFn }
+    options: { checkOnly: boolean; logger?: Logger }
   ): Promise<DeployedFlowInfo[]> => deployFlows(org, filePaths, options),
 };

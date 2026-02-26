@@ -16,9 +16,9 @@
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import type { Logger } from '@salesforce/core';
 import { XMLParser, XMLBuilder } from 'fast-xml-parser';
 import { METADATA_FLOWS_RELATIVE_PATH } from '../constants.js';
-import type { Logger } from '../validation/types.js';
 import type { DeploymentMetadata } from './deploymentMetadata.js';
 import { FlowPathResolver } from './flowPath.js';
 
@@ -52,7 +52,7 @@ export class FlowTransformer {
   ): FlowTransformerResult {
     const absolutePath = path.resolve(flowFilePath);
     if (!fs.existsSync(absolutePath)) {
-      logger?.log?.(`[FlowTransformer] Returning: flow file not found: ${absolutePath}`);
+      logger?.debug('Flow file not found: %s', absolutePath);
       return { modified: false, message: `Flow file not found: ${absolutePath}` };
     }
 
@@ -66,7 +66,7 @@ export class FlowTransformer {
     const parsed = parser.parse(xml) as FlowParseResult;
     const flowRoot = parsed?.Flow;
     if (!flowRoot) {
-      logger?.log?.('[FlowTransformer] Returning: invalid flow XML, missing Flow root');
+      logger?.debug('Invalid flow XML, missing Flow root');
       return { modified: false, message: 'Invalid flow XML: missing Flow root' };
     }
 
@@ -85,8 +85,7 @@ export class FlowTransformer {
     const output = builder.build(parsed as Record<string, unknown>) as string;
     fs.writeFileSync(absolutePath, output, 'utf-8');
 
-    logger?.log?.('[FlowTransformer] Updated intake form flow (will be deployed to target org):\n' + output);
-    logger?.log?.(`[FlowTransformer] Returning: modified=true, targetServiceProcessId=${targetServiceProcessId}`);
+    logger?.debug('Updated intake form flow for targetServiceProcessId=%s', targetServiceProcessId);
 
     return {
       modified: true,
@@ -124,7 +123,7 @@ export class FlowTransformer {
   public static transformFulfillmentFlow(flowFilePath: string, logger?: Logger): FlowTransformerResult {
     const absolutePath = path.resolve(flowFilePath);
     if (!fs.existsSync(absolutePath)) {
-      logger?.log?.(`[FlowTransformer] Fulfillment flow file not found: ${absolutePath}`);
+      logger?.debug('Fulfillment flow file not found: %s', absolutePath);
       return { modified: false, message: `Fulfillment flow file not found: ${absolutePath}` };
     }
 
@@ -138,7 +137,7 @@ export class FlowTransformer {
     const parsed = parser.parse(xml) as FlowParseResult;
     const flowRoot = parsed?.Flow;
     if (!flowRoot) {
-      logger?.log?.('[FlowTransformer] Fulfillment flow: invalid flow XML, missing Flow root');
+      logger?.debug('Fulfillment flow: invalid flow XML, missing Flow root');
       return { modified: false, message: 'Invalid flow XML: missing Flow root' };
     }
 
@@ -157,7 +156,7 @@ export class FlowTransformer {
     const output = builder.build(parsed as Record<string, unknown>) as string;
     fs.writeFileSync(absolutePath, output, 'utf-8');
 
-    logger?.log?.('[FlowTransformer] Set fulfillment flow status to Draft (ready for deployment).');
+    logger?.debug('Set fulfillment flow status to Draft (ready for deployment).');
     return {
       modified: previousStatus !== 'Draft',
       message: 'Set fulfillment flow status to Draft',

@@ -170,7 +170,7 @@ export function formatValidationError(error: ValidationError, verbose: boolean):
     lines.push('');
     lines.push('Deployment aborted.');
     if (!verbose) {
-      lines.push('Run with --verbose for full validator trace.');
+      lines.push('Run with --loglevel debug for full validator trace. You can also set SF_LOG_LEVEL=debug.');
     }
     return lines;
   }
@@ -236,7 +236,7 @@ export function formatValidationError(error: ValidationError, verbose: boolean):
 
   lines.push('Deployment aborted.');
   if (!verbose) {
-    lines.push('Run with --verbose for full validator trace.');
+    lines.push('Run with --loglevel debug for full validator trace. You can also set SF_LOG_LEVEL=debug.');
   }
 
   return lines;

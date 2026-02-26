@@ -17,14 +17,14 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { Org } from '@salesforce/core';
+import type { Logger } from '@salesforce/core';
 import { ComponentSet } from '@salesforce/source-deploy-retrieve';
-
-type LogJsonFn = (data: unknown) => void;
 
 export type DeployFlowsOptions = {
   /** When true, validates deployment without committing (dry run). Default false. */
   checkOnly?: boolean;
-  logJson?: LogJsonFn;
+  /** Optional logger for diagnostic output (e.g. deploy response at debug level). */
+  logger?: Logger;
 };
 
 /** Deployed flow id and name, from deploy result when checkOnly is false. definitionId from Tooling API when enriched. */
@@ -60,11 +60,10 @@ function getDeployedFlowInfos(response: { details?: { componentSuccesses?: Compo
 export async function deployFlows(
   targetOrg: Org,
   filePaths: string[],
-  options?: DeployFlowsOptions | LogJsonFn
+  options?: DeployFlowsOptions
 ): Promise<DeployedFlowInfo[]> {
-  const opts: DeployFlowsOptions =
-    options === undefined ? {} : typeof options === 'function' ? { logJson: options } : options;
-  const { checkOnly = false, logJson } = opts;
+  const opts = options ?? {};
+  const { checkOnly = false, logger } = opts;
 
   if (filePaths.length === 0) {
     const msg = 'No flow files provided for deployment.';
@@ -90,9 +89,8 @@ export async function deployFlows(
 
   const result = await deploy.pollStatus();
 
-  // Only log JSON if logJson callback is provided (verbose mode)
-  if (logJson) {
-    logJson(result.response);
+  if (logger) {
+    logger.debug('Deploy response %o', result.response);
   }
 
   const status = result.response.status as string;
@@ -109,7 +107,7 @@ export async function deployflow(
   targetOrg: Org,
   flowName: string,
   inputDir: string,
-  options?: DeployFlowsOptions | LogJsonFn
+  options?: DeployFlowsOptions
 ): Promise<DeployedFlowInfo[]> {
   const flowFile = path.resolve(inputDir, `main/default/flows/${flowName}.flow-meta.xml`);
   if (!fs.existsSync(flowFile)) {

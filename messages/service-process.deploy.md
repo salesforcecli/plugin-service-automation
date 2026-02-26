@@ -12,6 +12,8 @@ The command does not create missing prerequisites. Deployment failures
 caused by missing dependencies are surfaced. Supported metadata is
 Service Process Attributes, Intake flow, Fulfillment flow, Preprocessor.
 
+Use --loglevel debug for detailed internal logs (API requests/responses, IDs, validation details). You can also set SF_LOG_LEVEL=debug.
+
 # flags.input-zip.summary
 
 Path to a zip file containing metadata for deployment.
@@ -20,16 +22,22 @@ Path to a zip file containing metadata for deployment.
 
 Path to a zip file containing metadata for deployment.
 
-# flags.verbose.summary
+# flags.loglevel.summary
 
-Show detailed deployment information.
+Log level for diagnostic output.
 
-# flags.verbose.description
+# flags.loglevel.description
 
-Show detailed deployment information including IDs, endpoints, and timings.
+Set to debug (or trace) for detailed internal logs (API requests/responses, IDs, validation details). You can also set SF_LOG_LEVEL=debug.
 
 # examples
 
 - Deploy a Service Process from a zip file:
 
   <%= config.bin %> <%= command.id %> -z ./service-process.zip -o prod
+
+- Deploy with detailed debug logs (use either form):
+
+  SF_LOG_LEVEL=debug <%= config.bin %> <%= command.id %> -z ./service-process.zip -o prod
+
+  <%= config.bin %> <%= command.id %> -z ./service-process.zip -o prod --loglevel debug

@@ -17,6 +17,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type { Connection, Org } from '@salesforce/core';
+import type { Logger } from '@salesforce/core';
 import type { SfCommand } from '@salesforce/sf-plugins-core';
 import { METADATA_FLOWS_RELATIVE_PATH } from '../constants.js';
 import { DeployError, TemplateDataError } from '../errors.js';
@@ -29,7 +30,7 @@ import { TemplateDataReader } from '../workspace/templateData.js';
 import { readDeploymentMetadata, type DeploymentMetadata } from '../workspace/deploymentMetadata.js';
 import type { DeployedFlowNames } from '../workspace/serviceProcessTransformer.js';
 import { ValidationRunner, builtInValidatorsWithMetadata } from '../validation/index.js';
-import type { LogJsonFn, Logger, ValidationContext } from '../validation/types.js';
+import type { ValidationContext } from '../validation/types.js';
 import { DeploymentStages, type TreeItem } from '../utils/deploymentStages.js';
 import { RollbackStages, ROLLBACK_SECTION_HEADER } from '../utils/rollbackStages.js';
 import { defaults, type DeployServiceProcessDependencies } from './deployDependencies.js';
@@ -53,12 +54,10 @@ export type DeployServiceOptions = {
   expectedApiVersion?: string;
   /** SfCommand instance for spinner and logging */
   command?: SfCommand<unknown>;
-  /** Enable verbose output */
-  verbose?: boolean;
   /** Optional: DeploymentStages for visual progress display */
   deployStages?: DeploymentStages;
+  /** Optional: @salesforce/core Logger for diagnostic output (respects global --loglevel or SF_LOG_LEVEL). */
   logger?: Logger;
-  logJson?: LogJsonFn;
   dependencies?: DeployServiceProcessDependencies;
 };
 
@@ -70,23 +69,16 @@ export class DeployService {
   private readonly org: Org;
   private readonly expectedApiVersion?: string;
   private readonly command?: SfCommand<unknown>;
-  private readonly verbose: boolean;
   private readonly deployStages?: DeploymentStages;
   private readonly logger?: Logger;
-  private readonly logJson?: LogJsonFn;
   private readonly deps: Required<DeployServiceProcessDependencies>;
-
-  /** Buffered verbose lines when MSO is active to avoid breaking the display; flushed after stop(). */
-  private verboseBuffer: string[] = [];
 
   public constructor(options: DeployServiceOptions) {
     this.org = options.org;
     this.expectedApiVersion = options.expectedApiVersion;
     this.command = options.command;
-    this.verbose = options.verbose ?? false;
     this.deployStages = options.deployStages;
     this.logger = options.logger;
-    this.logJson = options.logJson ?? options.logger?.logJson;
     this.deps = { ...defaults, ...options.dependencies } as Required<DeployServiceProcessDependencies>;
   }
 
@@ -147,7 +139,6 @@ export class DeployService {
    */
   public async deploy(inputZip: string): Promise<DeployServiceProcessResult> {
     const deploymentStartTime = Date.now();
-    this.verboseBuffer = [];
 
     // Phase 1: Prepare deployment (extract workspace, read metadata, validate inputs)
     this.deployStages?.startPhase('Preparing connection');
@@ -156,9 +147,11 @@ export class DeployService {
 
     try {
       // Phase 2: Validate deployment
+      this.logger?.info('Starting validation');
       await this.validateDeployment(context);
 
       // Phase 3: Deploy Service Process
+      this.logger?.info('Starting Service Process creation');
       await this.deployServiceProcessPhase(context);
 
       // Phase 4a: Deploy flow metadata (only if needed - rollback-protected zone)
@@ -167,6 +160,7 @@ export class DeployService {
       try {
         if (context.needsDeployment && context.filePaths.length > 0) {
           // Deploy metadata
+          this.logger?.info('Starting metadata deploy');
           await this.deployMetadata(context);
 
           // After deploying, check if we have flows to link to the catalog item
@@ -182,17 +176,6 @@ export class DeployService {
           this.deployStages?.skipToPhase('Done');
           skippedToDone = true;
         }
-
-        // TEST FAILURE INJECTION POINT (for testing rollback functionality)
-        // Set environment variable FORCE_DEPLOY_METADATA_FAILURE=true to trigger test failure
-        // Example: FORCE_DEPLOY_METADATA_FAILURE=true sf service-process deploy --target-org myorg --input-zip test.zip
-        // This tests Scenario 2 rollback: deletes both deployed flows AND Service Process
-        if (process.env.FORCE_DEPLOY_METADATA_FAILURE === 'true') {
-          throw new DeployError(
-            'Test failure triggered before flow deployment (FORCE_DEPLOY_METADATA_FAILURE=true)',
-            'TestFlowDeploymentFailure'
-          );
-        }
         // Success! Disable rollback
         context.rollback.needed = false;
       } catch (error) {
@@ -203,6 +186,7 @@ export class DeployService {
           this.deployStages.failPhase('Deploying metadata', error as Error);
         }
         // Phase 5: Handle rollback if flow deployment/linking fails
+        this.logger?.error('Deploy phase failed, starting rollback: %s', (error as Error).message);
         await this.handleRollback(context, error as Error, deploymentStartTime);
         throw error;
       }
@@ -215,8 +199,6 @@ export class DeployService {
 
       // Stop MSO before logging summary to prevent output reordering
       this.deployStages?.stop();
-
-      this.flushVerboseBuffer();
 
       if (this.deployStages) {
         const linkedCount = this.countLinkedComponents(context);
@@ -238,34 +220,6 @@ export class DeployService {
     } finally {
       context.cleanup();
     }
-  }
-
-  /**
-   * When MSO is active, return a logger that buffers output so command.log() doesn't break the display.
-   * Flush with flushVerboseBuffer() after deployStages.stop().
-   */
-  private getEffectiveLogger(): Logger | undefined {
-    if (!this.logger) return undefined;
-    if (this.deployStages && this.command && !this.command.jsonEnabled()) {
-      return {
-        log: (msg: string): void => {
-          this.verboseBuffer.push(msg);
-        },
-        logJson: (data: unknown): void => {
-          this.verboseBuffer.push(typeof data === 'string' ? data : JSON.stringify(data, null, 2));
-        },
-      };
-    }
-    return this.logger;
-  }
-
-  private flushVerboseBuffer(): void {
-    if (this.verboseBuffer.length === 0) return;
-    if (this.command && !this.command.jsonEnabled()) {
-      this.command.log('\n--- Verbose output ---');
-      this.verboseBuffer.forEach((line) => this.command!.log(line));
-    }
-    this.verboseBuffer = [];
   }
 
   /**
@@ -309,42 +263,30 @@ export class DeployService {
     targetServiceProcessId: string | undefined,
     deployedFlowNames: DeployedFlowNames | undefined,
     templateDataExtract: { name?: string },
-    deploymentMetadata: DeploymentMetadata | undefined,
-    logger?: Logger
+    deploymentMetadata: DeploymentMetadata | undefined
   ): Promise<void> {
     // Check if intake flow should be deployed (not linked)
     if (deploymentMetadata?.intakeFlow?.deploymentIntent !== 'deploy') {
-      if (this.verbose) {
-        logger?.log?.('[deployServiceProcess] Skipping intake form transformation (deploymentIntent is not deploy)');
-      }
+      this.logger?.debug('Skipping intake form transformation (deploymentIntent is not deploy)');
       return;
     }
 
     if (!targetServiceProcessId || !deployedFlowNames?.intakeForm) {
-      if (this.verbose) {
-        logger?.log?.(
-          '[deployServiceProcess] Skipping flow transformer (no targetServiceProcessId or no intakeForm in deployedFlowNames)'
-        );
-      }
+      this.logger?.debug('Skipping flow transformer (no targetServiceProcessId or no intakeForm in deployedFlowNames)');
       return;
     }
     const flowDir = path.join(workspace, METADATA_FLOWS_RELATIVE_PATH);
     const intakeFormFlowPath = FlowPathResolver.resolveFlowFilePath(flowDir, deployedFlowNames.intakeForm.originalName);
-    if (this.verbose) {
-      logger?.log?.(
-        `[deployServiceProcess] Calling FlowTransformer.transformIntakeFormFlow: ${intakeFormFlowPath} ${targetServiceProcessId}`
-      );
-    }
-    const transformResult = await Promise.resolve(
-      this.deps.flowTransformer(
-        intakeFormFlowPath,
-        targetServiceProcessId,
-        templateDataExtract.name,
-        this.verbose ? logger : undefined
-      )
+    this.logger?.debug(
+      'Calling FlowTransformer.transformIntakeFormFlow: %s %s',
+      intakeFormFlowPath,
+      targetServiceProcessId
     );
-    if (this.verbose && transformResult.modified) {
-      logger?.log?.(`Flow transformer: ${transformResult.message}`);
+    const transformResult = await Promise.resolve(
+      this.deps.flowTransformer(intakeFormFlowPath, targetServiceProcessId, templateDataExtract.name, this.logger)
+    );
+    if (transformResult.modified) {
+      this.logger?.debug('Flow transformer: %s', transformResult.message);
     }
   }
 
@@ -353,8 +295,7 @@ export class DeployService {
    * Returns a DeploymentContext with all necessary state for the deployment.
    */
   private async prepareDeployment(inputZip: string): Promise<DeploymentContext> {
-    const { org, logJson } = this;
-    const logger = this.getEffectiveLogger() ?? this.logger;
+    const { org } = this;
 
     // Extract workspace
     const { workspace, cleanup: cleanupWorkspace } = await DeployWorkspace.extractZipToWorkspace(inputZip);
@@ -403,8 +344,7 @@ export class DeployService {
       needsIntakeDeployment,
       needsFulfillmentDeployment,
       cleanupWorkspace,
-      logger,
-      logJson,
+      logger: this.logger,
     });
   }
 
@@ -490,7 +430,7 @@ export class DeployService {
         flowFilePaths: context.filePaths,
         apexClassNames: apexClassNames.length > 0 ? apexClassNames : undefined,
         customFields: customFields.length > 0 ? customFields : undefined,
-        logJson: this.verbose ? context.logJson : (): void => {},
+        logger: this.logger,
         intakeFlow: context.deploymentMetadata.intakeFlow,
         fulfillmentFlow: context.deploymentMetadata.fulfillmentFlow,
         targetOrgNamespace,
@@ -509,6 +449,7 @@ export class DeployService {
 
       context.recordPhaseTime('validation', Date.now() - phaseStart);
     } catch (error) {
+      this.logger?.error('Validation failed: %s', error instanceof Error ? error.message : String(error));
       this.deployStages?.failPhase('Validating deployment', error as Error);
       throw error;
     }
@@ -524,7 +465,6 @@ export class DeployService {
 
     try {
       const { deps } = this;
-      const logger = this.getEffectiveLogger() ?? this.logger;
       const targetOrgNamespace = await getOrgNamespace(context.org.getConnection());
 
       // Transform templateData.json
@@ -535,12 +475,10 @@ export class DeployService {
         targetOrgNamespace
       );
 
-      // Log the updated templateData.json before deployment (for old logger)
       const templateDataPath = path.join(context.workspace, 'templateData.json');
-      if (this.verbose && fs.existsSync(templateDataPath)) {
+      if (this.logger && fs.existsSync(templateDataPath)) {
         const updatedTemplateData = fs.readFileSync(templateDataPath, 'utf-8');
-        logger?.log?.('[deployServiceProcess] Updated templateData.json before deploy:');
-        logger?.log?.(updatedTemplateData);
+        this.logger?.debug('Updated templateData.json before deploy: %s', updatedTemplateData);
       }
 
       // Create zip and upload
@@ -555,9 +493,7 @@ export class DeployService {
 
       // Deploy template
       const templateDeployResponse = await deps.callTemplateDeploy(conn, context.contentDocumentId);
-      if (this.verbose) {
-        logger?.logJson?.(templateDeployResponse);
-      }
+      this.logger?.debug('Template deploy response %o', templateDeployResponse);
 
       if (templateDeployResponse?.status === 'FAILURE') {
         const message =
@@ -635,18 +571,18 @@ export class DeployService {
         this.deployStages?.logTreeStructure(context.templateDataExtract.name ?? 'Unknown', treeItems);
       }
 
-      // Verbose details (IDs) only in verbose mode
-      if (this.verbose && this.command) {
+      if (this.logger) {
         if (context.targetServiceProcessId) {
-          this.command.log(`  Service Process ID: ${context.targetServiceProcessId}`);
+          this.logger?.debug('Service Process ID: %s', context.targetServiceProcessId);
         }
         if (context.contentDocumentId) {
-          this.command.log(`  Content Document ID: ${context.contentDocumentId}`);
+          this.logger?.debug('Content Document ID: %s', context.contentDocumentId);
         }
       }
 
       context.recordPhaseTime('createServiceProcess', Date.now() - phaseStart);
     } catch (error) {
+      this.logger?.error('Service Process creation failed: %s', error instanceof Error ? error.message : String(error));
       this.deployStages?.failPhase('Creating Service Process', error as Error);
       throw error;
     }
@@ -657,8 +593,7 @@ export class DeployService {
    * NOTE: This method should only be called when deployment is actually needed (checked by caller).
    */
   private async deployMetadata(context: DeploymentContext): Promise<void> {
-    const { logJson, deps } = this;
-    const logger = this.getEffectiveLogger() ?? this.logger;
+    const { deps } = this;
 
     this.deployStages?.startPhase('Deploying metadata');
     const deployStart = Date.now();
@@ -675,8 +610,7 @@ export class DeployService {
         context.targetServiceProcessId,
         context.deployedFlowNames,
         context.templateDataExtract,
-        context.deploymentMetadata,
-        logger
+        context.deploymentMetadata
       );
 
       // Transform fulfillment flow
@@ -689,12 +623,9 @@ export class DeployService {
           flowDir,
           context.deployedFlowNames.fulfillmentFlow.originalName
         );
-        const fulfillmentResult = FlowTransformer.transformFulfillmentFlow(
-          fulfillmentFlowPath,
-          this.verbose ? logger : undefined
-        );
-        if (this.verbose && fulfillmentResult.modified) {
-          logger?.log?.(`Flow transformer: ${fulfillmentResult.message}`);
+        const fulfillmentResult = FlowTransformer.transformFulfillmentFlow(fulfillmentFlowPath, this.logger);
+        if (fulfillmentResult.modified) {
+          this.logger?.debug('Flow transformer: %s', fulfillmentResult.message);
         }
       }
 
@@ -702,7 +633,7 @@ export class DeployService {
       // eslint-disable-next-line no-param-reassign
       context.deployedFlows = await deps.deployFlowsFn(context.org, context.filePaths, {
         checkOnly: false,
-        logJson: this.verbose ? logJson : undefined,
+        logger: this.logger,
       });
 
       if (context.deployedFlows.length === 0) {
@@ -719,15 +650,10 @@ export class DeployService {
         connection,
         context.deployedFlows.map((f) => f.fullName)
       );
-      if (this.verbose) {
-        logger?.log?.('Fetched flow definition ids from Tooling API:');
-      }
+      this.logger?.debug('Fetched flow definition ids from Tooling API');
       for (const f of context.deployedFlows) {
         f.definitionId = definitionIds.get(f.fullName);
-        if (this.verbose) {
-          const defId = f.definitionId ?? '(not found)';
-          logger?.log?.(`  ${f.fullName}: id=${f.id}, definitionId=${defId}`);
-        }
+        this.logger?.debug('%s: id=%s, definitionId=%s', f.fullName, f.id, f.definitionId ?? '(not found)');
       }
 
       // Update flow items display to include InteractionDefinitionVersion IDs (from deployment)
@@ -742,6 +668,7 @@ export class DeployService {
       this.deployStages?.succeedPhase('Deploying metadata');
       context.recordPhaseTime('deployMetadata', Date.now() - deployStart);
     } catch (error) {
+      this.logger?.error('Metadata deploy failed: %s', error instanceof Error ? error.message : String(error));
       this.deployStages?.failPhase('Deploying metadata', error as Error);
       const message = error instanceof Error ? error.message : String(error);
       throw new DeployError(message, 'FlowDeploymentFailed');
@@ -752,8 +679,7 @@ export class DeployService {
    * Phase 4b: Finalize deployment (link flows to Service Process via catalog item patching).
    */
   private async finalizeDeployment(context: DeploymentContext): Promise<void> {
-    const logger = this.getEffectiveLogger() ?? this.logger;
-
+    this.logger?.info('Starting linking of deployed components');
     this.deployStages?.startPhase('Linking deployed components');
     const finalizeStart = Date.now();
 
@@ -766,13 +692,14 @@ export class DeployService {
           context.targetServiceProcessId,
           context.deployedFlows,
           context.deployedFlowNames,
-          this.verbose ? logger : undefined
+          this.logger
         );
       }
 
       this.deployStages?.succeedPhase('Linking deployed components');
       context.recordPhaseTime('finalize', Date.now() - finalizeStart);
     } catch (error) {
+      this.logger?.error('Linking failed: %s', error instanceof Error ? error.message : String(error));
       this.deployStages?.failPhase('Linking deployed components', error as Error);
       const message = error instanceof Error ? error.message : String(error);
       throw new DeployError(message, 'FinalizationFailed');
@@ -783,12 +710,8 @@ export class DeployService {
    * Phase 5: Handle rollback when deployment fails.
    */
   private async handleRollback(context: DeploymentContext, error: Error, deploymentStartTime: number): Promise<void> {
-    const { logger } = this;
-
-    // Log failure for verbose mode only
-    if (this.verbose) {
-      logger?.log?.(`Deployment failed: ${error.message}`);
-    }
+    this.logger?.info('Starting rollback (scenario: %s)', context.rollback.scenario ?? 'unknown');
+    this.logger?.debug('Deployment failed: %s', error.message);
 
     if (!context.rollback.needed || !context.targetServiceProcessId) {
       return;
@@ -827,7 +750,7 @@ export class DeployService {
         context.org.getConnection(),
         context.rollback.scenario!,
         rollbackData,
-        this.verbose ? logger : undefined,
+        this.logger,
         onProgress
       );
 
@@ -835,6 +758,7 @@ export class DeployService {
       rollbackStages.finish(duration);
     } catch (rollbackError) {
       rollbackFailed = true;
+      this.logger?.error('Rollback step failed: %s', (rollbackError as Error).message);
       rollbackStages.fail(rollbackError as Error);
       // Don't re-throw: original error is more important
     }
@@ -888,14 +812,12 @@ export async function deployServiceProcess(options: {
   inputZip: string;
   expectedApiVersion?: string;
   logger?: Logger;
-  logJson?: LogJsonFn;
   dependencies?: DeployServiceProcessDependencies;
 }): Promise<DeployServiceProcessResult> {
   const service = new DeployService({
     org: options.org,
     expectedApiVersion: options.expectedApiVersion,
     logger: options.logger,
-    logJson: options.logJson,
     dependencies: options.dependencies,
   });
   return service.deploy(options.inputZip);

@@ -14,12 +14,11 @@
  * limitations under the License.
  */
 
-import type { Org } from '@salesforce/core';
+import type { Org, Logger } from '@salesforce/core';
 import type { DeployedFlowInfo } from '../utils/flow/deployflow.js';
 import type { DeploymentMetadata } from '../workspace/deploymentMetadata.js';
 import type { TemplateDataExtract } from '../workspace/templateData.js';
 import type { DeployedFlowNames } from '../workspace/serviceProcessTransformer.js';
-import type { LogJsonFn, Logger } from '../validation/types.js';
 import { RollbackScenario } from './rollback.js';
 
 /**
@@ -58,9 +57,8 @@ export type DeploymentContext = {
   cleanupWorkspace: () => void;
   cleanupWorkspaceZip?: () => void;
 
-  // Logging
+  // Logging (optional @salesforce/core Logger for diagnostic output)
   logger?: Logger;
-  logJson?: LogJsonFn;
 
   // Timing
   startTime: number;
@@ -92,7 +90,6 @@ export function createDeploymentContext(options: {
   needsFulfillmentDeployment: boolean;
   cleanupWorkspace: () => void;
   logger?: Logger;
-  logJson?: LogJsonFn;
 }): DeploymentContext {
   const context: DeploymentContext = {
     workspace: options.workspace,
@@ -118,7 +115,6 @@ export function createDeploymentContext(options: {
       this.cleanupWorkspace();
     },
     logger: options.logger,
-    logJson: options.logJson,
   };
 
   return context;

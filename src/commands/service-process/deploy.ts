@@ -17,7 +17,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { SfCommand, Flags } from '@salesforce/sf-plugins-core';
-import { Messages, SfError } from '@salesforce/core';
+import { Logger, Messages, SfError } from '@salesforce/core';
 import { DeployError, ValidationError } from '../../errors.js';
 import { DeployService } from '../../services/deployserviceprocess.js';
 import { DeploymentStages } from '../../utils/deploymentStages.js';
@@ -65,11 +65,10 @@ export default class ServiceProcessDeploy extends SfCommand<ServiceProcessDeploy
         return input;
       },
     }),
-    verbose: Flags.boolean({
-      char: 'v',
-      default: false,
-      summary: messages.getMessage('flags.verbose.summary'),
-      description: messages.getMessage('flags.verbose.description'),
+    loglevel: Flags.string({
+      summary: messages.getMessage('flags.loglevel.summary'),
+      description: messages.getMessage('flags.loglevel.description'),
+      options: ['trace', 'debug', 'info', 'warn', 'error', 'fatal'],
     }),
   };
 
@@ -80,9 +79,17 @@ export default class ServiceProcessDeploy extends SfCommand<ServiceProcessDeploy
     if (inputZip == null || inputZip === '') {
       throw new SfError('Required flag input-zip is missing.', 'MissingRequiredFlag');
     }
-    const verbose = flags.verbose;
 
-    // Initialize DeploymentStages for UI
+    const logger = await Logger.child('service-process-deploy');
+    if (flags.loglevel) {
+      try {
+        logger.setLevel(Logger.getLevelByName(flags.loglevel));
+      } catch {
+        logger.warn('Invalid --loglevel "%s", using default', flags.loglevel);
+      }
+    }
+
+    logger.info('Deploy started: inputZip=%s', inputZip);
     const apiVersion = flags['api-version'];
     const deployStages = new DeploymentStages(
       this,
@@ -97,12 +104,8 @@ export default class ServiceProcessDeploy extends SfCommand<ServiceProcessDeploy
         org: flags['target-org'],
         expectedApiVersion: flags['api-version'],
         command: this,
-        verbose,
+        logger,
         deployStages,
-        logger: {
-          log: (msg: string) => this.log(msg),
-          logJson: this.logJson.bind(this),
-        },
       });
       result = await deployService.deploy(inputZip);
       // deployStages.stop() is called inside deploy() for success case
@@ -126,14 +129,18 @@ export default class ServiceProcessDeploy extends SfCommand<ServiceProcessDeploy
 
       // For other DeployErrors, stop MSO and rethrow
       if (deployErr?.code) {
+        logger.error('Deploy failed: %s', deployErr.message);
         deployStages.stop();
         throw new SfError(deployErr.message, deployErr.code);
       }
 
-      // For generic errors, stop MSO and rethrow
+      // Generic errors
+      logger.error('Deploy failed: %s', err instanceof Error ? err.message : String(err));
       deployStages.stop();
       throw err;
     }
+
+    logger.info('Deploy completed successfully');
 
     // JSON mode - structured output only
     if (this.jsonEnabled()) {
