@@ -27,7 +27,7 @@ const SINGLE_RECORD_QUERY_ERROR_NAMES = ['SingleRecordQuery_NoRecords', 'SingleR
 export class RetrieveServiceProcessRequestValidator {
   public static async validate(request: ServiceProcessRetrieveRequest): Promise<void> {
     if (!request.serviceProcessId) {
-      throw new ServiceProcessRetrieveValidationError('Service process ID is required');
+      throw new ServiceProcessRetrieveValidationError('Service Process ID is required');
     }
     await RetrieveServiceProcessRequestValidator.validateServiceProcessExists(
       request.serviceProcessId,
@@ -44,7 +44,7 @@ export class RetrieveServiceProcessRequestValidator {
       const isSingleRecordQueryError = error instanceof SfError && SINGLE_RECORD_QUERY_ERROR_NAMES.includes(error.name);
       if (isSingleRecordQueryError) {
         throw new ServiceProcessRetrieveValidationError(
-          `Service process with ID '${serviceProcessId}' does not exist in the org. Please try again with a valid service process ID.`
+          `Service Process with ID '${serviceProcessId}' does not exist in the org. Please try again with a valid service process ID.`
         );
       }
       throw new ServiceProcessRetrieveValidationError(
