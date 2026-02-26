@@ -27,7 +27,11 @@ import { DeployWorkspace } from '../workspace/deployWorkspace.js';
 import { FlowTransformer } from '../workspace/flowTransformer.js';
 import { FlowPathResolver } from '../workspace/flowPath.js';
 import { TemplateDataReader } from '../workspace/templateData.js';
-import { readDeploymentMetadata, type DeploymentMetadata } from '../workspace/deploymentMetadata.js';
+import {
+  readDeploymentMetadata,
+  writeDeploymentMetadata,
+  type DeploymentMetadata,
+} from '../workspace/deploymentMetadata.js';
 import type { DeployedFlowNames } from '../workspace/serviceProcessTransformer.js';
 import { ValidationRunner, builtInValidatorsWithMetadata } from '../validation/index.js';
 import type { ValidationContext } from '../validation/types.js';
@@ -58,6 +62,10 @@ export type DeployServiceOptions = {
   deployStages?: DeploymentStages;
   /** Optional: @salesforce/core Logger for diagnostic output (respects global --loglevel or SF_LOG_LEVEL). */
   logger?: Logger;
+  /** When true, set intake flow deploymentIntent to "link" and namespace to target org's namespace in deployment-metadata.json during preparation. */
+  linkIntake?: boolean;
+  /** When true, set fulfillment flow deploymentIntent to "link" and namespace to target org's namespace in deployment-metadata.json during preparation. */
+  linkFulfillment?: boolean;
   dependencies?: DeployServiceProcessDependencies;
 };
 
@@ -71,6 +79,8 @@ export class DeployService {
   private readonly command?: SfCommand<unknown>;
   private readonly deployStages?: DeploymentStages;
   private readonly logger?: Logger;
+  private readonly linkIntake: boolean;
+  private readonly linkFulfillment: boolean;
   private readonly deps: Required<DeployServiceProcessDependencies>;
 
   public constructor(options: DeployServiceOptions) {
@@ -79,6 +89,8 @@ export class DeployService {
     this.command = options.command;
     this.deployStages = options.deployStages;
     this.logger = options.logger;
+    this.linkIntake = options.linkIntake ?? false;
+    this.linkFulfillment = options.linkFulfillment ?? false;
     this.deps = { ...defaults, ...options.dependencies } as Required<DeployServiceProcessDependencies>;
   }
 
@@ -291,7 +303,9 @@ export class DeployService {
     // Extract workspace
     const { workspace, cleanup: cleanupWorkspace } = await DeployWorkspace.extractZipToWorkspace(inputZip);
 
-    const { filePaths, templateDataExtract } = TemplateDataReader.deriveFlowsAndTemplateData(workspace);
+    // Get connection and target org namespace early so we can apply --link-intake / --link-fulfillment overrides before validations
+    const connection = this.org.getConnection(this.expectedApiVersion);
+    const targetOrgNamespace = await getOrgNamespace(connection);
 
     // Read deployment metadata (required for flow validation)
     const deploymentMetadata = await readDeploymentMetadata(workspace);
@@ -300,6 +314,24 @@ export class DeployService {
         'deployment-metadata.json not found. Ensure package was retrieved with metadata support.'
       );
     }
+
+    // Apply --link-intake / --link-fulfillment overrides: set deploymentIntent to "link" and namespace to target org's namespace
+    let metadataUpdated = false;
+    if (this.linkIntake && deploymentMetadata.intakeFlow) {
+      deploymentMetadata.intakeFlow.deploymentIntent = 'link';
+      deploymentMetadata.intakeFlow.namespace = targetOrgNamespace ?? null;
+      metadataUpdated = true;
+    }
+    if (this.linkFulfillment && deploymentMetadata.fulfillmentFlow) {
+      deploymentMetadata.fulfillmentFlow.deploymentIntent = 'link';
+      deploymentMetadata.fulfillmentFlow.namespace = targetOrgNamespace ?? null;
+      metadataUpdated = true;
+    }
+    if (metadataUpdated) {
+      await writeDeploymentMetadata(workspace, deploymentMetadata);
+    }
+
+    const { filePaths, templateDataExtract } = TemplateDataReader.deriveFlowsAndTemplateData(workspace);
 
     // Check if any flows need deployment (vs linking to existing flows)
     const needsIntakeDeployment = deploymentMetadata.intakeFlow?.deploymentIntent === 'deploy';
@@ -322,8 +354,6 @@ export class DeployService {
     // Phase 1: Set flows to Draft BEFORE validators run
     // This ensures validators check Draft flows instead of Active flows with runtime errors
     FlowTransformer.setFlowsToDraft(workspace, deploymentMetadata);
-
-    const connection = this.org.getConnection(this.expectedApiVersion);
 
     // Create and return deployment context
     return createDeploymentContext({
@@ -800,12 +830,16 @@ export async function deployServiceProcess(options: {
   inputZip: string;
   expectedApiVersion?: string;
   logger?: Logger;
+  linkIntake?: boolean;
+  linkFulfillment?: boolean;
   dependencies?: DeployServiceProcessDependencies;
 }): Promise<DeployServiceProcessResult> {
   const service = new DeployService({
     org: options.org,
     expectedApiVersion: options.expectedApiVersion,
     logger: options.logger,
+    linkIntake: options.linkIntake,
+    linkFulfillment: options.linkFulfillment,
     dependencies: options.dependencies,
   });
   return service.deploy(options.inputZip);

@@ -71,6 +71,16 @@ export default class ServiceProcessDeploy extends SfCommand<ServiceProcessDeploy
         return input;
       },
     }),
+    'link-intake': Flags.boolean({
+      summary: messages.getMessage('flags.link-intake.summary'),
+      description: messages.getMessage('flags.link-intake.description'),
+      default: false,
+    }),
+    'link-fulfillment': Flags.boolean({
+      summary: messages.getMessage('flags.link-fulfillment.summary'),
+      description: messages.getMessage('flags.link-fulfillment.description'),
+      default: false,
+    }),
   };
 
   public async run(): Promise<ServiceProcessDeployResult> {
@@ -101,6 +111,8 @@ export default class ServiceProcessDeploy extends SfCommand<ServiceProcessDeploy
         command: this,
         logger,
         deployStages,
+        linkIntake: flags['link-intake'],
+        linkFulfillment: flags['link-fulfillment'],
       });
       result = await deployService.deploy(inputZip);
       // deployStages.stop() is called inside deploy() for success case
