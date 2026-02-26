@@ -4,7 +4,7 @@
     "command": "service-process:deploy",
     "flagAliases": [],
     "flagChars": ["o", "z"],
-    "flags": ["flags-dir", "json", "target-org", "api-version", "input-zip"],
+    "flags": ["flags-dir", "json", "target-org", "api-version", "input-zip", "link-intake", "link-fulfillment"],
     "plugin": "@salesforce/plugin-service-automation"
   },
   {
