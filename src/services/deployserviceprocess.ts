@@ -439,6 +439,9 @@ export class DeployService {
         },
         onValidatorComplete: (name, success) => {
           this.deployStages?.completeValidatorSubstage(name, success);
+          if (success) {
+            this.logger?.debug(`Validator passed: ${name}`);
+          }
         },
       };
 
@@ -449,7 +452,7 @@ export class DeployService {
 
       context.recordPhaseTime('validation', Date.now() - phaseStart);
     } catch (error) {
-      this.logger?.error('Validation failed: %s', error instanceof Error ? error.message : String(error));
+      this.logger?.error(`Validation failed: ${error instanceof Error ? error.message : String(error)}`);
       this.deployStages?.failPhase('Validating deployment', error as Error);
       throw error;
     }

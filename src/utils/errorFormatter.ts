@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import type { ValidationError } from '../errors.js';
+import { ValidationError } from '../errors.js';
 import type { ValidationResult } from '../validation/types.js';
 
 /** Error categories for grouping validation failures */
@@ -170,7 +170,7 @@ export function formatValidationError(error: ValidationError, verbose: boolean):
     lines.push('');
     lines.push('Deployment aborted.');
     if (!verbose) {
-      lines.push('Run with --loglevel debug for full validator trace. You can also set SF_LOG_LEVEL=debug.');
+      lines.push('Run with SF_LOG_LEVEL=debug or DEBUG=sf:* for full validator trace.');
     }
     return lines;
   }
@@ -236,10 +236,25 @@ export function formatValidationError(error: ValidationError, verbose: boolean):
 
   lines.push('Deployment aborted.');
   if (!verbose) {
-    lines.push('Run with --loglevel debug for full validator trace. You can also set SF_LOG_LEVEL=debug.');
+    lines.push('Run with SF_LOG_LEVEL=debug or DEBUG=sf:* for full validator trace.');
   }
 
   return lines;
+}
+
+/**
+ * Return a single string suitable for logging that matches the user-facing message.
+ * Use this so the log file contains the same text shown in the terminal.
+ *
+ * @param err - Error (typically ValidationError or DeployError)
+ * @returns Formatted message string for logger
+ */
+export function getFormattedMessageForLog(err: unknown): string {
+  if (err instanceof ValidationError && err.failures?.length) {
+    return formatValidationError(err, false).join('\n');
+  }
+  if (err instanceof Error) return err.message;
+  return String(err);
 }
 
 /**

@@ -21,6 +21,7 @@ import { Logger, Messages, SfError } from '@salesforce/core';
 import { DeployError, ValidationError } from '../../errors.js';
 import { DeployService } from '../../services/deployserviceprocess.js';
 import { DeploymentStages } from '../../utils/deploymentStages.js';
+import { getFormattedMessageForLog } from '../../utils/errorFormatter.js';
 
 Messages.importMessagesDirectoryFromMetaUrl(import.meta.url);
 const messages = Messages.loadMessages('@salesforce/plugin-service-automation', 'service-process.deploy');
@@ -65,11 +66,6 @@ export default class ServiceProcessDeploy extends SfCommand<ServiceProcessDeploy
         return input;
       },
     }),
-    loglevel: Flags.string({
-      summary: messages.getMessage('flags.loglevel.summary'),
-      description: messages.getMessage('flags.loglevel.description'),
-      options: ['trace', 'debug', 'info', 'warn', 'error', 'fatal'],
-    }),
   };
 
   public async run(): Promise<ServiceProcessDeployResult> {
@@ -81,15 +77,8 @@ export default class ServiceProcessDeploy extends SfCommand<ServiceProcessDeploy
     }
 
     const logger = await Logger.child('service-process-deploy');
-    if (flags.loglevel) {
-      try {
-        logger.setLevel(Logger.getLevelByName(flags.loglevel));
-      } catch {
-        logger.warn('Invalid --loglevel "%s", using default', flags.loglevel);
-      }
-    }
-
-    logger.info('Deploy started: inputZip=%s', inputZip);
+    const runId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+    logger.info(`[${runId}] Deploy started: inputZip=${inputZip}`);
     const apiVersion = flags['api-version'];
     const deployStages = new DeploymentStages(
       this,
@@ -111,6 +100,8 @@ export default class ServiceProcessDeploy extends SfCommand<ServiceProcessDeploy
       // deployStages.stop() is called inside deploy() for success case
     } catch (err) {
       const deployErr = err as DeployError;
+      const formattedMessage = getFormattedMessageForLog(err);
+      const rawMessage = err instanceof Error ? err.message : String(err);
 
       // Check if this error was already formatted and displayed by DeploymentStages
       // If failPhase was called with a custom format, the error message would have been shown
@@ -123,24 +114,29 @@ export default class ServiceProcessDeploy extends SfCommand<ServiceProcessDeploy
         deployErr?.code === 'FinalizationFailed';
 
       if (wasFormattedByDeploymentStages) {
-        // Error was already displayed nicely by DeploymentStages, just exit
-        process.exit(1);
+        logger.error(`[${runId}] Deploy failed [inputZip=${inputZip}]: ${formattedMessage}`);
+        logger.debug(`[${runId}] Deploy failed (raw): ${rawMessage}`);
+        deployStages.stop();
+        const code = deployErr?.code ?? 'ValidationFailed';
+        throw new SfError(deployErr?.message ?? formattedMessage, code);
       }
 
       // For other DeployErrors, stop MSO and rethrow
       if (deployErr?.code) {
-        logger.error('Deploy failed: %s', deployErr.message);
+        logger.error(`[${runId}] Deploy failed [inputZip=${inputZip}]: ${formattedMessage}`);
+        logger.debug(`[${runId}] Deploy failed (raw): ${rawMessage}`);
         deployStages.stop();
         throw new SfError(deployErr.message, deployErr.code);
       }
 
       // Generic errors
-      logger.error('Deploy failed: %s', err instanceof Error ? err.message : String(err));
+      logger.error(`[${runId}] Deploy failed [inputZip=${inputZip}]: ${formattedMessage}`);
+      logger.debug(`[${runId}] Deploy failed (raw): ${rawMessage}`);
       deployStages.stop();
       throw err;
     }
 
-    logger.info('Deploy completed successfully');
+    logger.info(`[${runId}] Deploy completed successfully`);
 
     // JSON mode - structured output only
     if (this.jsonEnabled()) {

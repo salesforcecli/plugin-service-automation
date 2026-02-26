@@ -3,8 +3,8 @@
     "alias": [],
     "command": "service-process:deploy",
     "flagAliases": [],
-    "flagChars": ["o", "v", "z"],
-    "flags": ["flags-dir", "json", "target-org", "api-version", "input-zip", "verbose"],
+    "flagChars": ["o", "z"],
+    "flags": ["flags-dir", "json", "target-org", "api-version", "input-zip"],
     "plugin": "@salesforce/plugin-service-automation"
   },
   {
