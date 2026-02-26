@@ -21,10 +21,15 @@ import { Logger, Messages, SfError } from '@salesforce/core';
 import { DeployError, ValidationError } from '../../errors.js';
 import { DeployService } from '../../services/deployserviceprocess.js';
 import { DeploymentStages } from '../../utils/deploymentStages.js';
-import { getFormattedMessageForLog } from '../../utils/errorFormatter.js';
+import type { DeploymentSummary } from '../../utils/deploymentStages.js';
+import { getFormattedMessageForLog, getValidationErrorMessage } from '../../utils/errorFormatter.js';
 
 Messages.importMessagesDirectoryFromMetaUrl(import.meta.url);
 const messages = Messages.loadMessages('@salesforce/plugin-service-automation', 'service-process.deploy');
+
+/** ANSI red for validation header in terminal (matches DeploymentStages). */
+const RED = '\x1b[31m';
+const RESET = '\x1b[0m';
 
 export type ServiceProcessDeployResult = {
   path: string;
@@ -86,6 +91,7 @@ export default class ServiceProcessDeploy extends SfCommand<ServiceProcessDeploy
       flags['target-org'].getConnection(apiVersion).instanceUrl
     );
     deployStages.start();
+    const startTime = Date.now();
 
     let result;
     try {
@@ -99,43 +105,7 @@ export default class ServiceProcessDeploy extends SfCommand<ServiceProcessDeploy
       result = await deployService.deploy(inputZip);
       // deployStages.stop() is called inside deploy() for success case
     } catch (err) {
-      const deployErr = err as DeployError;
-      const formattedMessage = getFormattedMessageForLog(err);
-      const rawMessage = err instanceof Error ? err.message : String(err);
-
-      // Check if this error was already formatted and displayed by DeploymentStages
-      // If failPhase was called with a custom format, the error message would have been shown
-      // and MSO stopped, so we should just exit without rethrowing
-      const wasFormattedByDeploymentStages =
-        (err instanceof ValidationError && Boolean(err.failures)) ||
-        deployErr?.code === 'TemplateDeployFailed' ||
-        deployErr?.code === 'FlowDeploymentFailed' ||
-        deployErr?.code === 'TestFlowDeploymentFailure' ||
-        deployErr?.code === 'FinalizationFailed';
-
-      if (wasFormattedByDeploymentStages) {
-        logger.error(`[${runId}] Deploy failed [inputZip=${inputZip}]: ${formattedMessage}`);
-        logger.debug(`[${runId}] Deploy failed (raw): ${rawMessage}`);
-        deployStages.stop();
-        const code = deployErr?.code ?? 'ValidationFailed';
-        const message = (deployErr?.message ?? formattedMessage).replace(/^Validation failed:\s*/i, '');
-        throw new SfError(message, code);
-      }
-
-      // For other DeployErrors, stop MSO and rethrow
-      if (deployErr?.code) {
-        logger.error(`[${runId}] Deploy failed [inputZip=${inputZip}]: ${formattedMessage}`);
-        logger.debug(`[${runId}] Deploy failed (raw): ${rawMessage}`);
-        deployStages.stop();
-        const message = deployErr.message.replace(/^Validation failed:\s*/i, '');
-        throw new SfError(message, deployErr.code);
-      }
-
-      // Generic errors
-      logger.error(`[${runId}] Deploy failed [inputZip=${inputZip}]: ${formattedMessage}`);
-      logger.debug(`[${runId}] Deploy failed (raw): ${rawMessage}`);
-      deployStages.stop();
-      throw err;
+      this.handleDeployFailure(err, deployStages, startTime, runId, inputZip, logger);
     }
 
     logger.info(`[${runId}] Deploy completed successfully`);
@@ -155,5 +125,59 @@ export default class ServiceProcessDeploy extends SfCommand<ServiceProcessDeploy
       contentDocumentId: result.contentDocumentId,
       deployedFlows: result.deployedFlows,
     };
+  }
+
+  /** Build failed summary payload for logSummary (single place for consistency). */
+  // eslint-disable-next-line class-methods-use-this -- factory for shared failure summary shape
+  private getFailedSummary(durationMs: number): DeploymentSummary {
+    return {
+      status: 'FAILED',
+      serviceProcessName: '-',
+      serviceProcessId: '-',
+      deployedCount: 0,
+      linkedCount: 0,
+      duration: durationMs,
+    };
+  }
+
+  /** Handle deploy failure: log, stop stages, show summary, then throw. */
+  private handleDeployFailure(
+    err: unknown,
+    deployStages: DeploymentStages,
+    startTime: number,
+    runId: string,
+    inputZip: string,
+    logger: Logger
+  ): never {
+    const deployErr = err as DeployError;
+    const formattedMessage = getFormattedMessageForLog(err);
+    logger.error(`[${runId}] Deploy failed [inputZip=${inputZip}]: ${formattedMessage}`);
+    logger.debug(`[${runId}] Deploy failed (raw): ${err instanceof Error ? err.message : String(err)}`);
+    deployStages.stop();
+    const isValidationFailure = err instanceof ValidationError && Boolean(err.failures?.length);
+    if (isValidationFailure && !this.jsonEnabled() && err instanceof ValidationError) {
+      const msg = getValidationErrorMessage(err);
+      const firstNewline = msg.indexOf('\n');
+      const header = firstNewline >= 0 ? msg.slice(0, firstNewline) : msg;
+      const rest = firstNewline >= 0 ? msg.slice(firstNewline) : '';
+      this.log('\n' + RED + header + RESET + rest);
+    }
+    deployStages.logSummary(this.getFailedSummary(Date.now() - startTime));
+    const wasFormattedByDeploymentStages =
+      (err instanceof ValidationError && Boolean(err.failures)) ||
+      deployErr?.code === 'TemplateDeployFailed' ||
+      deployErr?.code === 'FlowDeploymentFailed' ||
+      deployErr?.code === 'TestFlowDeploymentFailure' ||
+      deployErr?.code === 'FinalizationFailed';
+    if (wasFormattedByDeploymentStages || deployErr?.code) {
+      const code = deployErr?.code ?? 'ValidationFailed';
+      const message = isValidationFailure
+        ? 'Deployment validation failed.'
+        : code === 'TemplateDeployFailed'
+        ? 'Service Process Creation Failed.'
+        : (deployErr?.message ?? formattedMessage).replace(/^Validation failed:\s*/i, '');
+      throw new SfError(message, code);
+    }
+    throw err;
   }
 }

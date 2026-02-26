@@ -17,7 +17,6 @@
 import { MultiStageOutput } from '@oclif/multi-stage-output';
 import type { SfCommand } from '@salesforce/sf-plugins-core';
 import type { ValidationError } from '../errors.js';
-import { formatValidationErrorAsItems, getValidationErrorHeader } from './errorFormatter.js';
 
 type StageData = {
   duration?: string;
@@ -195,18 +194,9 @@ export class DeploymentStages {
     if (this.isValidationError(error) && error.failures) {
       // Keep substages visible - don't replace them with error items
       // The failed validators are already marked with ✘ via completeValidatorSubstage
-
-      // Mark stage as failed with empty error string
+      // Don't log validation details here; they are shown once in the thrown SfError message.
       this.mso.updateData({ duration: durationStr, error: '' });
       this.mso.error(); // This marks the stage as failed (✘) and stops MSO
-
-      // Display error details below the failed stage
-      const header = getValidationErrorHeader(error);
-      this.command.log(`\n${DeploymentStages.RED}${header}${DeploymentStages.RESET}`);
-
-      const errorItems = formatValidationErrorAsItems(error);
-      const errorLines = errorItems.map((item) => `   • ${item.label}: ${item.value}`);
-      this.command.log(errorLines.join('\n'));
     } else if (this.isTemplateDeployError(error)) {
       // Special handling for Service Process creation failures
       this.mso.updateData({ duration: durationStr, error: '' });
@@ -221,7 +211,7 @@ export class DeploymentStages {
       if (jsonPart) {
         try {
           const errorData = JSON.parse(jsonPart) as { deploymentResult?: string; status?: string; templateId?: string };
-          const details = errorData.deploymentResult ?? 'Unknown error';
+          const details = this.decodeTemplateDeployMessage(errorData.deploymentResult ?? 'Unknown error');
           this.command.log(`   ${details}`);
         } catch {
           // If JSON parsing fails, just show the raw message
@@ -373,6 +363,19 @@ export class DeploymentStages {
   // eslint-disable-next-line class-methods-use-this
   private isTemplateDeployError(error: Error): boolean {
     return 'code' in error && (error as { code: string }).code === 'TemplateDeployFailed';
+  }
+
+  /** Decode common HTML entities in template deploy API message for readable output. */
+  // eslint-disable-next-line class-methods-use-this
+  private decodeTemplateDeployMessage(text: string): string {
+    const decoded = text
+      .replace(/&#39;/g, "'")
+      .replace(/&quot;/g, '"')
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>');
+    // Show only the exception message; strip "Deployment failed: " prefix if present
+    return decoded.replace(/^Deployment failed:\s*/i, '');
   }
 
   /**

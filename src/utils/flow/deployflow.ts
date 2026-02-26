@@ -16,7 +16,7 @@
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { Org } from '@salesforce/core';
+import type { Org, Connection } from '@salesforce/core';
 import type { Logger } from '@salesforce/core';
 import { ComponentSet } from '@salesforce/source-deploy-retrieve';
 
@@ -25,6 +25,8 @@ export type DeployFlowsOptions = {
   checkOnly?: boolean;
   /** Optional logger for diagnostic output (e.g. deploy response at debug level). */
   logger?: Logger;
+  /** Optional API version (e.g. from --api-version); when set, connection uses this version. */
+  apiVersion?: string;
 };
 
 /** Deployed flow id and name, from deploy result when checkOnly is false. definitionId from Tooling API when enriched. */
@@ -35,7 +37,30 @@ export type DeployedFlowInfo = {
   definitionId?: string;
 };
 
+type ComponentFailure = { fullName?: string; problem?: string; problemType?: string };
 type ComponentSuccess = { componentType?: string; fullName?: string; id?: string };
+type DeployResponse = {
+  status?: string;
+  errorMessage?: string;
+  details?: { componentFailures?: ComponentFailure[] };
+};
+
+/**
+ * Build a user-facing error message from a failed deploy response.
+ * Prefer component failure details (problem/fullName) over top-level errorMessage.
+ */
+function getDeployErrorMessage(response: DeployResponse): string {
+  const failures = response.details?.componentFailures;
+  if (Array.isArray(failures) && failures.length > 0) {
+    return failures
+      .map((f) => {
+        const problem = f.problem?.trim() ?? 'Unknown error';
+        return f.fullName ? `${f.fullName}: ${problem}` : problem;
+      })
+      .join('; ');
+  }
+  return response.errorMessage?.trim() ?? 'Unknown error';
+}
 
 /**
  * Extract flow id and fullName from deploy result details (only when checkOnly was false).
@@ -56,9 +81,10 @@ function getDeployedFlowInfos(response: { details?: { componentSuccesses?: Compo
  * filePaths should be absolute paths to *.flow-meta.xml files.
  * Use checkOnly: true to validate deployment without committing (e.g. to surface failures before actual deploy).
  * When checkOnly is false and deployment succeeds, returns deployed flow ids and names; otherwise returns [].
+ * Pass Connection to use a specific connection (e.g. with --api-version); pass Org to use org.getConnection(options.apiVersion).
  */
 export async function deployFlows(
-  targetOrg: Org,
+  targetOrgOrConnection: Org | Connection,
   filePaths: string[],
   options?: DeployFlowsOptions
 ): Promise<DeployedFlowInfo[]> {
@@ -76,10 +102,15 @@ export async function deployFlows(
     throw new Error(msg);
   }
 
+  const connection =
+    typeof (targetOrgOrConnection as Org).getConnection === 'function'
+      ? (targetOrgOrConnection as Org).getConnection(opts.apiVersion)
+      : (targetOrgOrConnection as Connection);
+
   const componentSet = ComponentSet.fromSource(filePaths);
 
   const deploy = await componentSet.deploy({
-    usernameOrConnection: targetOrg.getConnection(),
+    usernameOrConnection: connection,
     apiOptions: {
       checkOnly,
       rollbackOnError: true,
@@ -95,8 +126,8 @@ export async function deployFlows(
 
   const status = result.response.status as string;
   if (status !== 'Succeeded') {
-    const msg = `Flow deployment failed: ${result.response.errorMessage ?? 'Unknown error'}`;
-    throw new Error(msg);
+    const message = getDeployErrorMessage(result.response as DeployResponse);
+    throw new Error(`Flow deployment failed: ${message}`);
   }
 
   if (checkOnly) return [];

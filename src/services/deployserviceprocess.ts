@@ -126,20 +126,11 @@ export class DeployService {
     return items;
   }
 
-  /** Format milliseconds as "Xm Y.YYs" or "Y.YYs". */
-  private static formatElapsedTime(ms: number): string {
-    const totalMinutes = Math.floor(ms / 60_000);
-    const totalSeconds = ((ms % 60_000) / 1000).toFixed(2);
-    return totalMinutes > 0 ? `${totalMinutes}m ${totalSeconds}s` : `${totalSeconds}s`;
-  }
-
   /**
    * Main deployment orchestrator.
    * Coordinates the 5 deployment phases: prepare, validate, deploy SP, deploy flows, and rollback (if needed).
    */
   public async deploy(inputZip: string): Promise<DeployServiceProcessResult> {
-    const deploymentStartTime = Date.now();
-
     // Phase 1: Prepare deployment (extract workspace, read metadata, validate inputs)
     this.deployStages?.startPhase('Preparing connection');
     const context = await this.prepareDeployment(inputZip);
@@ -187,7 +178,7 @@ export class DeployService {
         }
         // Phase 5: Handle rollback if flow deployment/linking fails
         this.logger?.error('Deploy phase failed, starting rollback: %s', (error as Error).message);
-        await this.handleRollback(context, error as Error, deploymentStartTime);
+        await this.handleRollback(context, error as Error);
         throw error;
       }
 
@@ -332,11 +323,14 @@ export class DeployService {
     // This ensures validators check Draft flows instead of Active flows with runtime errors
     FlowTransformer.setFlowsToDraft(workspace, deploymentMetadata);
 
+    const connection = this.org.getConnection(this.expectedApiVersion);
+
     // Create and return deployment context
     return createDeploymentContext({
       workspace,
       inputZip,
       org,
+      connection,
       deploymentMetadata,
       templateDataExtract,
       filePaths,
@@ -356,7 +350,7 @@ export class DeployService {
 
     try {
       const metadataApiVersion = TemplateDataReader.readOrgMetadataVersionFromDir(context.workspace);
-      const targetOrgNamespace = await getOrgNamespace(context.org.getConnection());
+      const targetOrgNamespace = await getOrgNamespace(context.connection);
 
       const { apexClassNames, customFields } = context.templateDataExtract;
 
@@ -423,7 +417,7 @@ export class DeployService {
       this.deployStages?.startPhase('Validating deployment');
 
       const validationContext: ValidationContext = {
-        conn: context.org.getConnection(),
+        conn: context.connection,
         org: context.org,
         expectedApiVersion: this.expectedApiVersion,
         metadataApiVersion,
@@ -468,7 +462,7 @@ export class DeployService {
 
     try {
       const { deps } = this;
-      const targetOrgNamespace = await getOrgNamespace(context.org.getConnection());
+      const targetOrgNamespace = await getOrgNamespace(context.connection);
 
       // Transform templateData.json
       // eslint-disable-next-line no-param-reassign
@@ -489,7 +483,7 @@ export class DeployService {
       // eslint-disable-next-line no-param-reassign
       context.cleanupWorkspaceZip = cleanup;
 
-      const conn = context.org.getConnection();
+      const conn = context.connection;
       const uploadResult = await deps.uploadZip(conn, zipPath);
       // eslint-disable-next-line no-param-reassign
       context.contentDocumentId = uploadResult.contentDocumentId;
@@ -634,7 +628,7 @@ export class DeployService {
 
       // Deploy flows
       // eslint-disable-next-line no-param-reassign
-      context.deployedFlows = await deps.deployFlowsFn(context.org, context.filePaths, {
+      context.deployedFlows = await deps.deployFlowsFn(context.connection, context.filePaths, {
         checkOnly: false,
         logger: this.logger,
       });
@@ -648,7 +642,7 @@ export class DeployService {
       // Note: Two types of IDs exist:
       // - InteractionDefinitionVersion ID (f.id) - shown to user, comes from metadata API deployment
       // - FlowDefinition ID (f.definitionId) - used for catalog linking, fetched from Tooling API
-      const connection = context.org.getConnection();
+      const connection = context.connection;
       const definitionIds = await getFlowDefinitionIds(
         connection,
         context.deployedFlows.map((f) => f.fullName)
@@ -689,7 +683,7 @@ export class DeployService {
     try {
       // Link flows to Service Process (if flows were deployed)
       if (context.targetServiceProcessId && context.deployedFlows && context.deployedFlows.length > 0) {
-        const connection = context.org.getConnection();
+        const connection = context.connection;
         await CatalogItemPatcher.patchCatalogItemWithFlowIds(
           connection,
           context.targetServiceProcessId,
@@ -712,7 +706,7 @@ export class DeployService {
   /**
    * Phase 5: Handle rollback when deployment fails.
    */
-  private async handleRollback(context: DeploymentContext, error: Error, deploymentStartTime: number): Promise<void> {
+  private async handleRollback(context: DeploymentContext, error: Error): Promise<void> {
     this.logger?.info('Starting rollback (scenario: %s)', context.rollback.scenario ?? 'unknown');
     this.logger?.debug('Deployment failed: %s', error.message);
 
@@ -749,13 +743,7 @@ export class DeployService {
         }
       };
 
-      await this.performRollback(
-        context.org.getConnection(),
-        context.rollback.scenario!,
-        rollbackData,
-        this.logger,
-        onProgress
-      );
+      await this.performRollback(context.connection, context.rollback.scenario!, rollbackData, this.logger, onProgress);
 
       const duration = Date.now() - rollbackStartTime;
       rollbackStages.finish(duration);
@@ -767,10 +755,7 @@ export class DeployService {
     }
 
     if (this.command && !this.command.jsonEnabled()) {
-      this.command.log('Status: Failed');
-      const totalDuration = Date.now() - deploymentStartTime;
-      this.command.log(`Total Elapsed Time: ${DeployService.formatElapsedTime(totalDuration)}\n`);
-      // Manual cleanup when rollback failed (shown once after Status/Time)
+      // Manual cleanup when rollback failed (shown once after rollback section)
       if (rollbackFailed) {
         this.command.log('Manual cleanup in the target org is required. Delete the following artifacts:\n');
         this.command.log(`  Service Process (Product2): ${context.targetServiceProcessId}`);

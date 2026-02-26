@@ -45,12 +45,11 @@ export class OrgApiVersionValidator {
     try {
       const referenceVersion = ctx.expectedApiVersion ?? ctx.conn.getApiVersion();
       if (ctx.metadataApiVersion !== referenceVersion) {
+        const suffix = ctx.expectedApiVersion ? ' (--api-version)' : ' (target org version)';
         return Promise.resolve({
           name: NAME,
           status: 'FAIL',
-          message: `org-metadata.json API version mismatch: file has ${
-            ctx.metadataApiVersion
-          }, expected ${referenceVersion}${ctx.expectedApiVersion ? ' (from --api-version)' : ' (org version)'}`,
+          message: `API version mismatch: package v${ctx.metadataApiVersion} cannot be deployed to target org v${referenceVersion}${suffix}.`,
         });
       }
       return Promise.resolve({
