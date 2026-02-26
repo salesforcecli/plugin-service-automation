@@ -34,15 +34,36 @@ export default class ServiceProcessList extends SfCommand<ServiceProcessListResu
     'api-version': Flags.orgApiVersion(),
     limit: Flags.integer({
       summary: messages.getMessage('flags.limit.summary'),
-      default: 10,
+      default: 1000,
     }),
   };
 
   public async run(): Promise<ServiceProcessListResult> {
     const { flags } = await this.parse(ServiceProcessList);
 
-    const name = flags.limit ?? 10;
-    this.log(`hello ${name} from src/commands/service-process/list.ts`);
+    const DEFAULT_LIMIT = 1000;
+    const limit = flags.limit ?? DEFAULT_LIMIT;
+
+    const connection = flags['target-org'].getConnection(flags['api-version']);
+    const result = await connection.query<{ Name: string; Id: string }>(
+      `SELECT Id, Name FROM Product2 WHERE UsedFor = 'ServiceProcess' ORDER BY Name LIMIT ${limit}`
+    );
+    const serviceProcessList = result.records;
+
+    this.table({
+      data: serviceProcessList.map((record) => ({
+        'Service Process ID': record.Id,
+        'Service Process Name': record.Name,
+      })),
+      overflow: 'wrap',
+      title: 'Unified Catalog Service Process',
+      titleOptions: {
+        bold: true,
+        underline: true,
+      },
+    });
+
+    this.log(`\u2714 Displayed ${result.totalSize} Service Processes\n`);
     return {
       path: 'src/commands/service-process/list.ts',
     };
