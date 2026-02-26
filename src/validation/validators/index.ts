@@ -48,3 +48,59 @@ export const builtInValidators: Validator[] = [
   fulfillmentFlowUniquenessValidator,
   fulfillmentFlowExistenceValidator,
 ];
+
+/**
+ * Validator with metadata for progress tracking and display.
+ */
+export type ValidatorWithMetadata = {
+  validator: Validator;
+  name: string;
+  description: string;
+};
+
+/**
+ * Built-in validators with metadata for progress display.
+ * These are used when running validations with progress callbacks.
+ */
+export const builtInValidatorsWithMetadata: ValidatorWithMetadata[] = [
+  {
+    validator: orgApiVersionValidator,
+    name: 'OrgApiVersion',
+    description: 'Org API compatibility check',
+  },
+  {
+    validator: customFieldsValidator,
+    name: 'CustomFields',
+    description: 'Custom field validation',
+  },
+  {
+    validator: flowDeploymentValidator,
+    name: 'FlowDeployment',
+    description: 'Flow deployment check',
+  },
+  {
+    validator: apexClassPresenceValidator,
+    name: 'ApexClass',
+    description: 'Apex class verification',
+  },
+  {
+    validator: intakeFlowUniquenessValidator,
+    name: 'IntakeFlowUniqueness',
+    description: 'Intake flow uniqueness check',
+  },
+  {
+    validator: intakeFlowExistenceValidator,
+    name: 'IntakeFlowExistence',
+    description: 'Intake flow existence check',
+  },
+  {
+    validator: fulfillmentFlowUniquenessValidator,
+    name: 'FulfillmentFlowUniqueness',
+    description: 'Fulfillment flow uniqueness check',
+  },
+  {
+    validator: fulfillmentFlowExistenceValidator,
+    name: 'FulfillmentFlowExistence',
+    description: 'Fulfillment flow existence check',
+  },
+];

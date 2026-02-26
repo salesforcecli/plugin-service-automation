@@ -44,8 +44,6 @@ export class ApexClassPresenceValidator {
         };
       }
       const passMessage = `All ${classNames.length} Apex class(es) present`;
-      // eslint-disable-next-line no-console
-      console.log(passMessage, classNames);
       return { name: NAME, status: 'PASS', message: passMessage };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);

@@ -15,6 +15,7 @@
  */
 
 import { SfError } from '@salesforce/core';
+import type { ValidationResult } from './validation/types.js';
 
 /** Base for deploy/validation domain errors; command can map to SfError with exit codes. */
 export class DeployError extends Error {
@@ -29,9 +30,12 @@ export class DeployError extends Error {
 
 /** Thrown when validation fails (e.g. runValidationsOrThrow). */
 export class ValidationError extends DeployError {
-  public constructor(message: string) {
+  public readonly failures?: ValidationResult[];
+
+  public constructor(message: string, failures?: ValidationResult[]) {
     super(message, 'ValidationFailed');
     this.name = 'ValidationError';
+    this.failures = failures;
   }
 }
 

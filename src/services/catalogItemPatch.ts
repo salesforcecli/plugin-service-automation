@@ -15,11 +15,11 @@
  */
 
 import type { Connection } from '@salesforce/core';
+import type { Logger } from '@salesforce/core';
 import { buildCatalogItemPath } from '../constants.js';
 import { getConnect, patchConnect } from '../utils/api/connectApi.js';
 import type { DeployedFlowInfo } from '../utils/flow/deployflow.js';
 import type { DeployedFlowNames } from '../workspace/serviceProcessTransformer.js';
-import type { Logger } from '../validation/types.js';
 
 export type CatalogItemGetResponse = {
   intakeForm?: { id?: string };
@@ -100,10 +100,10 @@ export class CatalogItemPatcher {
     const existingIntakeFormId = catalogItem?.intakeForm?.id;
     const contextDefinitionDevNameOrId = catalogItem?.contextDefinitionDevNameOrId;
     if (existingIntakeFormId) {
-      logger?.log?.(`Fetched catalog item intakeForm.id: ${existingIntakeFormId}`);
+      logger?.debug('Fetched catalog item intakeForm.id: %s', existingIntakeFormId);
     }
     if (contextDefinitionDevNameOrId) {
-      logger?.log?.(`Fetched catalog item contextDefinitionDevNameOrId: ${contextDefinitionDevNameOrId}`);
+      logger?.debug('Fetched catalog item contextDefinitionDevNameOrId: %s', contextDefinitionDevNameOrId);
     }
 
     const catalogItemBody = CatalogItemPatcher.buildCatalogItemPatchBody(
@@ -113,12 +113,10 @@ export class CatalogItemPatcher {
       contextDefinitionDevNameOrId
     );
 
-    logger?.log?.(`Patching catalog item: ${catalogItemPath}`);
-    logger?.log?.('Request body:');
-    logger?.logJson?.(catalogItemBody);
+    logger?.info('Patching catalog item: %s', catalogItemPath);
+    logger?.debug('Request body %o', catalogItemBody);
     const patchResponse = await patchConnect(conn, catalogItemPath, catalogItemBody);
-    logger?.log?.('Patch response:');
-    logger?.logJson?.(patchResponse);
-    logger?.log?.('Catalog item patched successfully.');
+    logger?.debug('Patch response %o', patchResponse);
+    logger?.info('Catalog item patched successfully.');
   }
 }

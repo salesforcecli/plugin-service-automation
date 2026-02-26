@@ -15,6 +15,7 @@
  */
 
 import type { Connection, Org } from '@salesforce/core';
+import type { Logger as SfCoreLogger } from '@salesforce/core';
 
 /**
  * Result of a single validation run. Validators return this; they never throw.
@@ -63,14 +64,18 @@ export type ValidationContext = {
   flowFilePaths?: string[];
   apexClassNames?: string[];
   customFields?: CustomFieldRef[];
-  /** Optional: used by FlowDeploymentValidator and deploy to log JSON (e.g. deploy response). */
-  logJson?: LogJsonFn;
+  /** Optional: used by FlowDeploymentValidator to log check-only deploy response at debug level. */
+  logger?: SfCoreLogger;
   /** Optional: intake flow reference with deployment intent; validated based on link/deploy mode. */
   intakeFlow?: FlowReference;
   /** Optional: fulfillment flow reference with deployment intent; validated based on link/deploy mode. */
   fulfillmentFlow?: FlowReference;
   /** Optional: target org namespace for deployment uniqueness checks. */
   targetOrgNamespace?: string | null;
+  /** Optional: callback when a validator starts executing. */
+  onValidatorStart?: (validatorName: string, description: string) => void;
+  /** Optional: callback when a validator completes (success or failure). */
+  onValidatorComplete?: (validatorName: string, success: boolean) => void;
 };
 
 /**

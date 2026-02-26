@@ -15,11 +15,11 @@
  */
 
 import type { Connection } from '@salesforce/core';
+import type { Logger } from '@salesforce/core';
 import { buildCatalogItemPath } from '../constants.js';
 import { getConnect, patchConnect } from '../utils/api/connectApi.js';
 import type { DeployedFlowInfo } from '../utils/flow/deployflow.js';
 import type { DeployedFlowNames } from '../workspace/serviceProcessTransformer.js';
-import type { Logger } from '../validation/types.js';
 import type { CatalogItemGetResponse } from './catalogItemPatch.js';
 
 /**
@@ -54,25 +54,30 @@ export class RollbackService {
   public static async rollbackServiceProcessOnly(
     connection: Connection,
     targetServiceProcessId: string,
-    logger?: Logger
+    logger?: Logger,
+    onProgress?: (step: string, status: 'start' | 'complete') => void
   ): Promise<void> {
-    logger?.log?.('Starting Scenario 1 rollback: Unlink artifacts, delete Service Process');
+    logger?.info('Starting Scenario 1 rollback: Unlink artifacts, delete Service Process');
 
     // Step 1: Check if unlinking is needed
     const needsUnlink = await this.needsUnlinking(connection, targetServiceProcessId);
 
     // Step 2: Unlink artifacts if any are linked (from deployment API)
     if (needsUnlink) {
-      logger?.log?.('Artifacts are linked, unlinking before deletion...');
+      logger?.info('Artifacts are linked, unlinking before deletion...');
+      onProgress?.('Unlinking components', 'start');
       await this.unlinkComponents(connection, targetServiceProcessId, logger);
+      onProgress?.('Unlinking components', 'complete');
     } else {
-      logger?.log?.('No artifacts linked, proceeding to deletion.');
+      logger?.info('No artifacts linked, proceeding to deletion.');
     }
 
     // Step 3: Delete Service Process
+    onProgress?.('Removing Service Process', 'start');
     await this.deleteServiceProcess(connection, targetServiceProcessId, logger);
+    onProgress?.('Removing Service Process', 'complete');
 
-    logger?.log?.('Scenario 1 rollback completed.');
+    logger?.info('Scenario 1 rollback completed.');
   }
 
   /**
@@ -83,9 +88,10 @@ export class RollbackService {
   public static async rollbackServiceProcessAndFlows(
     connection: Connection,
     rollbackData: RollbackData,
-    logger?: Logger
+    logger?: Logger,
+    onProgress?: (step: string, status: 'start' | 'complete') => void
   ): Promise<void> {
-    logger?.log?.('Starting Scenario 2 rollback: Unlink artifacts, delete flows, delete Service Process');
+    logger?.info('Starting Scenario 2 rollback: Unlink artifacts, delete flows, delete Service Process');
 
     const { targetServiceProcessId, deployedFlows } = rollbackData;
 
@@ -94,23 +100,29 @@ export class RollbackService {
 
     // Step 2: Unlink artifacts if any are linked (from deployment API or PATCH API)
     if (needsUnlink) {
-      logger?.log?.('Artifacts are linked, unlinking before deletion...');
+      logger?.info('Artifacts are linked, unlinking before deletion...');
+      onProgress?.('Unlinking components', 'start');
       await this.unlinkComponents(connection, targetServiceProcessId, logger);
+      onProgress?.('Unlinking components', 'complete');
     } else {
-      logger?.log?.('No artifacts linked, proceeding to deletion.');
+      logger?.info('No artifacts linked, proceeding to deletion.');
     }
 
     // Step 3: Delete newly deployed flows
     if (deployedFlows && deployedFlows.length > 0) {
+      onProgress?.('Deleting deployed flows', 'start');
       await this.deleteDeployedFlows(connection, deployedFlows, logger);
+      onProgress?.('Deleting deployed flows', 'complete');
     } else {
-      logger?.log?.('No flows to delete.');
+      logger?.info('No flows to delete.');
     }
 
     // Step 4: Delete Service Process
+    onProgress?.('Removing Service Process', 'start');
     await this.deleteServiceProcess(connection, targetServiceProcessId, logger);
+    onProgress?.('Removing Service Process', 'complete');
 
-    logger?.log?.('Scenario 2 rollback completed.');
+    logger?.info('Scenario 2 rollback completed.');
   }
 
   /**
@@ -166,7 +178,7 @@ export class RollbackService {
         operationType: 'Update',
         id: catalogItem.intakeForm.id,
       };
-      logger?.log?.(`Unlinking intake form (ID: ${catalogItem.intakeForm.id})`);
+      logger?.debug('Unlinking intake form (ID: %s)', catalogItem.intakeForm.id);
     }
 
     if (catalogItem?.fulfillmentFlow?.id) {
@@ -174,7 +186,7 @@ export class RollbackService {
         operationType: 'Delete',
         id: catalogItem.fulfillmentFlow.id,
       };
-      logger?.log?.(`Unlinking fulfillment flow (ID: ${catalogItem.fulfillmentFlow.id})`);
+      logger?.debug('Unlinking fulfillment flow (ID: %s)', catalogItem.fulfillmentFlow.id);
     }
 
     if (
@@ -186,27 +198,24 @@ export class RollbackService {
         operationType: 'Delete',
         id: pp.id,
       }));
-      logger?.log?.(`Unlinking ${catalogItem.preProcessors.length} preprocessor(s)`);
+      logger?.debug('Unlinking %d preprocessor(s)', catalogItem.preProcessors.length);
     }
 
     if (catalogItem?.contextDefinitionDevNameOrId) {
       unlinkBody.contextDefinitionDevNameOrId = catalogItem.contextDefinitionDevNameOrId;
     }
 
-    logger?.log?.(`Patching catalog item to unlink components: ${catalogItemPath}`);
-    logger?.log?.('Unlink request body:');
-    logger?.logJson?.(unlinkBody);
+    logger?.debug('Patching catalog item to unlink components: %s', catalogItemPath);
+    logger?.debug('Unlink request body %o', unlinkBody);
 
     try {
       const patchResponse = await patchConnect(connection, catalogItemPath, unlinkBody);
-      logger?.log?.('Unlink response:');
-      logger?.logJson?.(patchResponse);
-      logger?.log?.('All components unlinked successfully.');
+      logger?.debug('Unlink response %o', patchResponse);
+      logger?.info('All components unlinked successfully.');
     } catch (error) {
-      logger?.log?.(`Unlink PATCH failed with error: ${error instanceof Error ? error.message : String(error)}`);
+      logger?.error('Unlink PATCH failed: %s', error instanceof Error ? error.message : String(error));
       if (error && typeof error === 'object' && 'response' in error) {
-        logger?.log?.('Error response body:');
-        logger?.logJson?.(error.response);
+        logger?.debug('Error response body %o', (error as { response: unknown }).response);
       }
       throw error;
     }
@@ -221,25 +230,24 @@ export class RollbackService {
     targetServiceProcessId: string,
     logger?: Logger
   ): Promise<void> {
-    logger?.log?.(`Deleting Service Process via Product2 sobject: ${targetServiceProcessId}`);
+    logger?.info('Deleting Service Process via Product2 sobject: %s', targetServiceProcessId);
 
     try {
       const deleteResult = await connection.sobject('Product2').destroy(targetServiceProcessId);
 
-      logger?.log?.('Delete result:');
-      logger?.logJson?.(deleteResult);
+      logger?.debug('Delete result %o', deleteResult);
 
       if (!deleteResult.success) {
         const errors = Array.isArray(deleteResult.errors)
           ? deleteResult.errors.join(', ')
           : JSON.stringify(deleteResult.errors);
-        logger?.log?.(`Delete failed: ${errors}`);
+        logger?.error('Delete failed: %s', errors);
         throw new Error(`Failed to delete Service Process: ${errors}`);
       }
 
-      logger?.log?.('Service Process deleted successfully.');
+      logger?.info('Service Process deleted successfully.');
     } catch (error) {
-      logger?.log?.(`Delete operation failed with error: ${error instanceof Error ? error.message : String(error)}`);
+      logger?.error('Delete operation failed: %s', error instanceof Error ? error.message : String(error));
       throw error;
     }
   }
@@ -257,11 +265,11 @@ export class RollbackService {
     const flowsToDelete = deployedFlows.filter((f) => f.id != null);
 
     if (flowsToDelete.length === 0) {
-      logger?.log?.('No flow IDs to delete (flows may not have been deployed).');
+      logger?.info('No flow IDs to delete (flows may not have been deployed).');
       return;
     }
 
-    logger?.log?.(`Deleting ${flowsToDelete.length} deployed flow(s) via Tooling API...`);
+    logger?.info('Deleting %d deployed flow(s) via Tooling API...', flowsToDelete.length);
 
     let successCount = 0;
     let failureCount = 0;
@@ -269,29 +277,31 @@ export class RollbackService {
     // Delete flows one by one (sequential for better error logging)
     // eslint-disable-next-line no-await-in-loop
     for (const flow of flowsToDelete) {
-      logger?.log?.(`Deleting flow: ${flow.fullName} (InteractionDefinitionVersion ID: ${flow.id})`);
+      logger?.debug('Deleting flow: %s (InteractionDefinitionVersion ID: %s)', flow.fullName, flow.id);
       try {
         // eslint-disable-next-line no-await-in-loop
         const deleteResult = await connection.tooling.destroy('Flow', flow.id);
-        logger?.log?.(`Delete result for ${flow.id}:`);
-        logger?.logJson?.(deleteResult);
+        logger?.debug('Delete result for %s %o', flow.id, deleteResult);
 
         if (deleteResult.success) {
-          logger?.log?.(`  ✓ Successfully deleted ${flow.fullName}`);
+          logger?.debug('Successfully deleted %s', flow.fullName);
           successCount++;
         } else {
           const errors = Array.isArray(deleteResult.errors)
             ? deleteResult.errors.join(', ')
             : JSON.stringify(deleteResult.errors);
-          logger?.log?.(`  ✗ Failed to delete ${flow.fullName}: ${errors}`);
+          logger?.warn('Failed to delete %s: %s', flow.fullName, errors);
           failureCount++;
         }
       } catch (error) {
-        logger?.log?.(`  ✗ Error deleting ${flow.fullName}: ${error instanceof Error ? error.message : String(error)}`);
+        logger?.error('Error deleting %s: %s', flow.fullName, error instanceof Error ? error.message : String(error));
         failureCount++;
       }
     }
 
-    logger?.log?.(`Flow deletion summary: ${successCount} succeeded, ${failureCount} failed`);
+    logger?.info('Flow deletion summary: %d succeeded, %d failed', successCount, failureCount);
+    if (failureCount > 0) {
+      throw new Error(`Failed to delete ${failureCount} flow(s) during rollback (${successCount} succeeded).`);
+    }
   }
 }

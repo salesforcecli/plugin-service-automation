@@ -14,12 +14,11 @@
  * limitations under the License.
  */
 
-import type { Org } from '@salesforce/core';
+import type { Org, Logger } from '@salesforce/core';
 import type { DeployedFlowInfo } from '../utils/flow/deployflow.js';
 import type { DeploymentMetadata } from '../workspace/deploymentMetadata.js';
 import type { TemplateDataExtract } from '../workspace/templateData.js';
 import type { DeployedFlowNames } from '../workspace/serviceProcessTransformer.js';
-import type { LogJsonFn, Logger } from '../validation/types.js';
 import { RollbackScenario } from './rollback.js';
 
 /**
@@ -58,9 +57,17 @@ export type DeploymentContext = {
   cleanupWorkspace: () => void;
   cleanupWorkspaceZip?: () => void;
 
-  // Logging
+  // Logging (optional @salesforce/core Logger for diagnostic output)
   logger?: Logger;
-  logJson?: LogJsonFn;
+
+  // Timing
+  startTime: number;
+  phaseTimings: Map<string, number>;
+
+  /**
+   * Record phase execution time
+   */
+  recordPhaseTime(phase: string, durationMs: number): void;
 
   /**
    * Cleanup all resources (workspace and zip)
@@ -83,7 +90,6 @@ export function createDeploymentContext(options: {
   needsFulfillmentDeployment: boolean;
   cleanupWorkspace: () => void;
   logger?: Logger;
-  logJson?: LogJsonFn;
 }): DeploymentContext {
   const context: DeploymentContext = {
     workspace: options.workspace,
@@ -99,12 +105,16 @@ export function createDeploymentContext(options: {
       needed: false,
     },
     cleanupWorkspace: options.cleanupWorkspace,
+    startTime: Date.now(),
+    phaseTimings: new Map(),
+    recordPhaseTime(phase: string, durationMs: number) {
+      this.phaseTimings.set(phase, durationMs);
+    },
     cleanup() {
       this.cleanupWorkspaceZip?.();
       this.cleanupWorkspace();
     },
     logger: options.logger,
-    logJson: options.logJson,
   };
 
   return context;

@@ -32,7 +32,7 @@ export class FlowDeploymentValidator {
     }
 
     try {
-      await deployFlows(org, flowFilePaths, { checkOnly: true, logJson: ctx.logJson });
+      await deployFlows(org, flowFilePaths, { checkOnly: true, logger: ctx.logger });
       return {
         name: NAME,
         status: 'PASS',

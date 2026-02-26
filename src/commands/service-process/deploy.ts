@@ -17,9 +17,11 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { SfCommand, Flags } from '@salesforce/sf-plugins-core';
-import { Messages, SfError } from '@salesforce/core';
-import type { DeployError } from '../../errors.js';
+import { Logger, Messages, SfError } from '@salesforce/core';
+import { DeployError, ValidationError } from '../../errors.js';
 import { DeployService } from '../../services/deployserviceprocess.js';
+import { DeploymentStages } from '../../utils/deploymentStages.js';
+import { getFormattedMessageForLog } from '../../utils/errorFormatter.js';
 
 Messages.importMessagesDirectoryFromMetaUrl(import.meta.url);
 const messages = Messages.loadMessages('@salesforce/plugin-service-automation', 'service-process.deploy');
@@ -73,46 +75,81 @@ export default class ServiceProcessDeploy extends SfCommand<ServiceProcessDeploy
     if (inputZip == null || inputZip === '') {
       throw new SfError('Required flag input-zip is missing.', 'MissingRequiredFlag');
     }
-    const org = flags['target-org'];
-    const username = org.getUsername();
-    if (username) {
-      this.log(`Deploying to org: ${username}`);
-    }
-    this.log(`Input zip file: ${inputZip}`);
 
+    const logger = await Logger.child('service-process-deploy');
+    const runId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+    logger.info(`[${runId}] Deploy started: inputZip=${inputZip}`);
     const apiVersion = flags['api-version'];
-    const connection = org.getConnection(apiVersion);
-    this.log(`Org API version: ${connection.getApiVersion()}`);
+    const deployStages = new DeploymentStages(
+      this,
+      'Service Process Deployment',
+      flags['target-org'].getConnection(apiVersion).instanceUrl
+    );
+    deployStages.start();
 
     let result;
     try {
       const deployService = new DeployService({
         org: flags['target-org'],
-        expectedApiVersion: apiVersion,
-        logger: {
-          log: (msg: string) => this.log(msg),
-          logJson: this.logJson.bind(this),
-        },
+        expectedApiVersion: flags['api-version'],
+        command: this,
+        logger,
+        deployStages,
       });
       result = await deployService.deploy(inputZip);
+      // deployStages.stop() is called inside deploy() for success case
     } catch (err) {
       const deployErr = err as DeployError;
-      if (deployErr?.code) {
-        throw new SfError(deployErr.message, deployErr.code);
+      const formattedMessage = getFormattedMessageForLog(err);
+      const rawMessage = err instanceof Error ? err.message : String(err);
+
+      // Check if this error was already formatted and displayed by DeploymentStages
+      // If failPhase was called with a custom format, the error message would have been shown
+      // and MSO stopped, so we should just exit without rethrowing
+      const wasFormattedByDeploymentStages =
+        (err instanceof ValidationError && Boolean(err.failures)) ||
+        deployErr?.code === 'TemplateDeployFailed' ||
+        deployErr?.code === 'FlowDeploymentFailed' ||
+        deployErr?.code === 'TestFlowDeploymentFailure' ||
+        deployErr?.code === 'FinalizationFailed';
+
+      if (wasFormattedByDeploymentStages) {
+        logger.error(`[${runId}] Deploy failed [inputZip=${inputZip}]: ${formattedMessage}`);
+        logger.debug(`[${runId}] Deploy failed (raw): ${rawMessage}`);
+        deployStages.stop();
+        const code = deployErr?.code ?? 'ValidationFailed';
+        const message = (deployErr?.message ?? formattedMessage).replace(/^Validation failed:\s*/i, '');
+        throw new SfError(message, code);
       }
+
+      // For other DeployErrors, stop MSO and rethrow
+      if (deployErr?.code) {
+        logger.error(`[${runId}] Deploy failed [inputZip=${inputZip}]: ${formattedMessage}`);
+        logger.debug(`[${runId}] Deploy failed (raw): ${rawMessage}`);
+        deployStages.stop();
+        const message = deployErr.message.replace(/^Validation failed:\s*/i, '');
+        throw new SfError(message, deployErr.code);
+      }
+
+      // Generic errors
+      logger.error(`[${runId}] Deploy failed [inputZip=${inputZip}]: ${formattedMessage}`);
+      logger.debug(`[${runId}] Deploy failed (raw): ${rawMessage}`);
+      deployStages.stop();
       throw err;
     }
 
-    this.log('Deploy completed successfully.');
-    if (result.contentDocumentId) {
-      this.log(`Content Document ID: ${result.contentDocumentId}`);
+    logger.info(`[${runId}] Deploy completed successfully`);
+
+    // JSON mode - structured output only
+    if (this.jsonEnabled()) {
+      return {
+        path: inputZip,
+        contentDocumentId: result.contentDocumentId,
+        deployedFlows: result.deployedFlows,
+      };
     }
-    if (result.deployedFlows?.length) {
-      for (const f of result.deployedFlows) {
-        const defId = f.definitionId ? ` (definitionId: ${f.definitionId})` : '';
-        this.log(`${f.id} for ${f.fullName}${defId}`);
-      }
-    }
+
+    // Default mode - output is already handled by DeploymentStages
     return {
       path: inputZip,
       contentDocumentId: result.contentDocumentId,

@@ -23,4 +23,6 @@ export {
   apexClassPresenceValidator,
   orgApiVersionValidator,
   builtInValidators,
+  builtInValidatorsWithMetadata,
 } from './validators/index.js';
+export type { ValidatorWithMetadata } from './validators/index.js';
