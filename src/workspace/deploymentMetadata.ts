@@ -16,6 +16,7 @@
 
 import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { SERVICE_PROCESS_METADATA_FILENAME } from '../constants.js';
 import type { FlowReference } from '../validation/types.js';
 
 export type DeploymentMetadata = {
@@ -24,19 +25,32 @@ export type DeploymentMetadata = {
   version: string;
 };
 
-const METADATA_FILENAME = 'deployment-metadata.json';
+/** Combined metadata file written by retrieve and read by deploy (org + service process flows). */
+export type ServiceProcessMetadata = {
+  version: string;
+  org: {
+    instanceUrl: string;
+    id: string;
+    apiVersion: string;
+  };
+  serviceProcess: {
+    intakeFlow?: FlowReference;
+    fulfillmentFlow?: FlowReference;
+  };
+};
+
+const LEGACY_METADATA_FILENAME = 'deployment-metadata.json';
 
 /**
- * Reads deployment metadata from package directory.
+ * Reads the combined service-process.metadata.json from package directory.
  * Returns null if file doesn't exist.
  */
-export async function readDeploymentMetadata(packageDir: string): Promise<DeploymentMetadata | null> {
+export async function readServiceProcessMetadata(packageDir: string): Promise<ServiceProcessMetadata | null> {
   try {
-    const filePath = join(packageDir, METADATA_FILENAME);
+    const filePath = join(packageDir, SERVICE_PROCESS_METADATA_FILENAME);
     const content = await readFile(filePath, 'utf-8');
-    return JSON.parse(content) as DeploymentMetadata;
+    return JSON.parse(content) as ServiceProcessMetadata;
   } catch (error) {
-    // File doesn't exist or is invalid
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
       return null;
     }
@@ -45,10 +59,35 @@ export async function readDeploymentMetadata(packageDir: string): Promise<Deploy
 }
 
 /**
- * Writes deployment metadata to package directory.
+ * Writes the combined service-process.metadata.json to package directory.
+ */
+export async function writeServiceProcessMetadata(packageDir: string, metadata: ServiceProcessMetadata): Promise<void> {
+  const filePath = join(packageDir, SERVICE_PROCESS_METADATA_FILENAME);
+  const content = JSON.stringify(metadata, null, 2);
+  await writeFile(filePath, content, 'utf-8');
+}
+
+/**
+ * Reads deployment metadata from package directory (service-process.metadata.json).
+ * Returns the deployment-relevant shape (version, intakeFlow, fulfillmentFlow) or null if file doesn't exist.
+ */
+export async function readDeploymentMetadata(packageDir: string): Promise<DeploymentMetadata | null> {
+  const full = await readServiceProcessMetadata(packageDir);
+  if (!full) return null;
+  return {
+    version: full.version,
+    intakeFlow: full.serviceProcess.intakeFlow,
+    fulfillmentFlow: full.serviceProcess.fulfillmentFlow,
+  };
+}
+
+/**
+ * Writes deployment metadata to package directory (legacy deployment-metadata.json shape).
+ *
+ * @internal Deploy uses writeServiceProcessMetadata for the combined file.
  */
 export async function writeDeploymentMetadata(packageDir: string, metadata: DeploymentMetadata): Promise<void> {
-  const filePath = join(packageDir, METADATA_FILENAME);
+  const filePath = join(packageDir, LEGACY_METADATA_FILENAME);
   const content = JSON.stringify(metadata, null, 2);
   await writeFile(filePath, content, 'utf-8');
 }

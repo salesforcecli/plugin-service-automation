@@ -47,6 +47,14 @@ export class TemplateDataError extends DeployError {
   }
 }
 
+/** Thrown when service-process.metadata.json is missing from the deploy input zip. */
+export class MissingMetadataFileError extends DeployError {
+  public constructor(message: string) {
+    super(message, 'MissingMetadataFile');
+    this.name = 'MissingMetadataFileError';
+  }
+}
+
 export class ServiceProcessRetrieveError extends SfError {
   public constructor(message: string, name: string = 'ServiceProcessRetrieveError') {
     super(message, name);

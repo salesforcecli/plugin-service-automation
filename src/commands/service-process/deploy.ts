@@ -188,6 +188,11 @@ export default class ServiceProcessDeploy extends SfCommand<ServiceProcessDeploy
         : code === 'TemplateDeployFailed'
         ? 'Service Process Creation Failed.'
         : (deployErr?.message ?? formattedMessage).replace(/^Validation failed:\s*/i, '');
+      if (deployErr?.code === 'MissingMetadataFile') {
+        throw new SfError(message, code, [
+          'Use `sf service-process retrieve ...` to get a metadata-supported package.',
+        ]);
+      }
       throw new SfError(message, code);
     }
     throw err;

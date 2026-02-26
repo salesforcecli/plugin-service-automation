@@ -19,7 +19,7 @@ import * as path from 'node:path';
 import {
   FLOW_EXTENSIONS,
   METADATA_FLOWS_RELATIVE_PATH,
-  ORG_METADATA_FILENAME,
+  SERVICE_PROCESS_METADATA_FILENAME,
   TEMPLATE_DATA_FILENAME,
 } from '../constants.js';
 import type { CustomFieldRef } from '../validation/types.js';
@@ -115,15 +115,17 @@ export class TemplateDataReader {
   }
 
   /**
-   * Read org-metadata.json from the directory and return apiVersion for validation.
-   * Accepts apiVersion as string or number (e.g. 65.0). Returns undefined if file is missing or has no version.
+   * Read service-process.metadata.json from the directory and return org.apiVersion for validation.
+   * Returns undefined if file is missing or has no org.apiVersion.
    */
   public static readOrgMetadataVersionFromDir(dirPath: string): string | undefined {
-    const metadataPath = path.join(dirPath, ORG_METADATA_FILENAME);
+    const metadataPath = path.join(dirPath, SERVICE_PROCESS_METADATA_FILENAME);
     if (!fs.existsSync(metadataPath)) return undefined;
     try {
-      const data = JSON.parse(fs.readFileSync(metadataPath, 'utf-8')) as { apiVersion?: string | number };
-      const raw = data.apiVersion;
+      const data = JSON.parse(fs.readFileSync(metadataPath, 'utf-8')) as {
+        org?: { apiVersion?: string | number };
+      };
+      const raw = data.org?.apiVersion;
       if (raw == null) return undefined;
       const version =
         typeof raw === 'number'

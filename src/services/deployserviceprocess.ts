@@ -20,7 +20,7 @@ import type { Connection, Org } from '@salesforce/core';
 import type { Logger } from '@salesforce/core';
 import type { SfCommand } from '@salesforce/sf-plugins-core';
 import { METADATA_FLOWS_RELATIVE_PATH } from '../constants.js';
-import { DeployError, TemplateDataError } from '../errors.js';
+import { DeployError, MissingMetadataFileError, TemplateDataError } from '../errors.js';
 import { type DeployedFlowInfo } from '../utils/flow/deployflow.js';
 import { getFlowDefinitionIds, getOrgNamespace } from '../utils/flow/flowMetadata.js';
 import { DeployWorkspace } from '../workspace/deployWorkspace.js';
@@ -28,8 +28,8 @@ import { FlowTransformer } from '../workspace/flowTransformer.js';
 import { FlowPathResolver } from '../workspace/flowPath.js';
 import { TemplateDataReader } from '../workspace/templateData.js';
 import {
-  readDeploymentMetadata,
-  writeDeploymentMetadata,
+  readServiceProcessMetadata,
+  writeServiceProcessMetadata,
   type DeploymentMetadata,
 } from '../workspace/deploymentMetadata.js';
 import type { DeployedFlowNames } from '../workspace/serviceProcessTransformer.js';
@@ -307,13 +307,16 @@ export class DeployService {
     const connection = this.org.getConnection(this.expectedApiVersion);
     const targetOrgNamespace = await getOrgNamespace(connection);
 
-    // Read deployment metadata (required for flow validation)
-    const deploymentMetadata = await readDeploymentMetadata(workspace);
-    if (!deploymentMetadata) {
-      throw new TemplateDataError(
-        'deployment-metadata.json not found. Ensure package was retrieved with metadata support.'
-      );
+    // Read combined service-process.metadata.json (org + deployment metadata)
+    const serviceProcessMetadata = await readServiceProcessMetadata(workspace);
+    if (!serviceProcessMetadata) {
+      throw new MissingMetadataFileError('service-process.metadata.json not found in the input zip.');
     }
+    const deploymentMetadata: DeploymentMetadata = {
+      version: serviceProcessMetadata.version,
+      intakeFlow: serviceProcessMetadata.serviceProcess.intakeFlow,
+      fulfillmentFlow: serviceProcessMetadata.serviceProcess.fulfillmentFlow,
+    };
 
     // Apply --link-intake / --link-fulfillment overrides: set deploymentIntent to "link" and namespace to target org's namespace
     let metadataUpdated = false;
@@ -328,7 +331,7 @@ export class DeployService {
       metadataUpdated = true;
     }
     if (metadataUpdated) {
-      await writeDeploymentMetadata(workspace, deploymentMetadata);
+      await writeServiceProcessMetadata(workspace, serviceProcessMetadata);
     }
 
     const { filePaths, templateDataExtract } = TemplateDataReader.deriveFlowsAndTemplateData(workspace);

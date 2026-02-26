@@ -57,8 +57,8 @@ describe('service-process deploy', () => {
       expect.fail('Expected command to throw');
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      // Now expects deployment-metadata.json error since we check for it first
-      expect(message).to.include('deployment-metadata.json not found');
+      // Now expects service-process.metadata.json error since we check for it first
+      expect(message).to.include('service-process.metadata.json not found');
     } finally {
       cleanup();
     }
@@ -71,8 +71,8 @@ describe('service-process deploy', () => {
       expect.fail('Expected command to throw');
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      // Now expects deployment-metadata.json error since we check for it first
-      expect(message).to.include('deployment-metadata.json not found');
+      // Now expects service-process.metadata.json error since we check for it first
+      expect(message).to.include('service-process.metadata.json not found');
     } finally {
       cleanup();
     }

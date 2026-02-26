@@ -19,8 +19,8 @@ import type { ValidationContext, ValidationResult, Validator } from '../types.js
 const NAME = 'OrgApiVersionValidator';
 
 /**
- * Validates that the API version in org-metadata.json matches the connected org's version
- * (or the --api-version flag if provided). Fails when org-metadata.json API version is not present.
+ * Validates that the API version in service-process.metadata.json (org.apiVersion) matches the connected org's version
+ * (or the --api-version flag if provided). Fails when service-process.metadata.json API version is not present.
  */
 export class OrgApiVersionValidator {
   public static validate(ctx: ValidationContext): Promise<ValidationResult> {
@@ -28,7 +28,7 @@ export class OrgApiVersionValidator {
       return Promise.resolve({
         name: NAME,
         status: 'FAIL',
-        message: 'org-metadata.json API version is required but not present',
+        message: 'service-process.metadata.json API version is required but not present',
       });
     }
 
@@ -38,24 +38,24 @@ export class OrgApiVersionValidator {
       return Promise.resolve({
         name: NAME,
         status: 'FAIL',
-        message: `org-metadata.json API version has invalid format: ${ctx.metadataApiVersion}. Expected format: X.Y (e.g., 65.0, 66.0)`,
+        message: `service-process.metadata.json API version has invalid format: ${ctx.metadataApiVersion}. Expected format: X.Y (e.g., 65.0, 66.0)`,
       });
     }
 
     try {
       const referenceVersion = ctx.expectedApiVersion ?? ctx.conn.getApiVersion();
       if (ctx.metadataApiVersion !== referenceVersion) {
-        const suffix = ctx.expectedApiVersion ? ' (--api-version)' : ' (target org version)';
+        const suffix = ctx.expectedApiVersion ? ' (from --api-version)' : ' (org version)';
         return Promise.resolve({
           name: NAME,
           status: 'FAIL',
-          message: `API version mismatch: package v${ctx.metadataApiVersion} cannot be deployed to target org v${referenceVersion}${suffix}.`,
+          message: `service-process.metadata.json API version mismatch: file has ${ctx.metadataApiVersion}, expected ${referenceVersion}${suffix}`,
         });
       }
       return Promise.resolve({
         name: NAME,
         status: 'PASS',
-        message: `org-metadata.json API version matches: ${ctx.metadataApiVersion}`,
+        message: `service-process.metadata.json API version matches: ${ctx.metadataApiVersion}`,
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
