@@ -19,6 +19,7 @@ import { SfCommand, Flags } from '@salesforce/sf-plugins-core';
 import { Messages, Org } from '@salesforce/core';
 import { retrieveServiceProcess } from '../../services/retrieveServiceProcessService.js';
 import { ServiceProcessRetrieveRequest, OrgMetadata } from '../../types/types.js';
+import { RetrieveStages } from '../../utils/retrieveStages.js';
 
 Messages.importMessagesDirectoryFromMetaUrl(import.meta.url);
 const messages = Messages.loadMessages('@salesforce/plugin-service-automation', 'service-process.retrieve');
@@ -73,11 +74,24 @@ export default class ServiceProcessRetrieve extends SfCommand<ServiceProcessRetr
   public async run(): Promise<ServiceProcessRetrieveResult> {
     const { flags } = await this.parse(ServiceProcessRetrieve);
     const request: ServiceProcessRetrieveRequest = ServiceProcessRetrieve.serviceProcessRetrieveRequest(flags);
-    this.spinner.start('Starting Service Process Retrieve');
-    await retrieveServiceProcess(request);
-    this.spinner.stop('✅');
-    return {
-      path: 'hello world',
-    };
+
+    const orgUrl = request.connection.instanceUrl;
+    const retrieveStages = new RetrieveStages(this, 'Service Process Retrieval', orgUrl);
+    retrieveStages.start();
+
+    let result;
+    try {
+      result = await retrieveServiceProcess(request, retrieveStages);
+    } catch (error) {
+      if (!this.jsonEnabled()) {
+        retrieveStages.stop();
+      }
+      throw error;
+    }
+
+    if (this.jsonEnabled()) {
+      return { path: result.zipFilePath };
+    }
+    return { path: result.zipFilePath };
   }
 }
