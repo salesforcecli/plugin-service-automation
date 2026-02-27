@@ -37,8 +37,8 @@ export async function createZipFile(zipFilePath: string, zip: JSZip): Promise<vo
     type: 'nodebuffer',
     compression: 'DEFLATE',
     compressionOptions: {
-      level: 9
-    }
+      level: 9,
+    },
   });
   await writeFile(zipFilePath, new Uint8Array(zipBuffer));
 }

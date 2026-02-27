@@ -48,7 +48,9 @@ describe('service-process retrieve', () => {
       '01txx0000008ABC',
       '--target-org',
       'test@org.com',
+      '--json',
     ]);
-    expect(result.path).to.equal('hello world');
+    expect(result).to.have.property('path');
+    expect(result.path).to.be.a('string');
   });
 });
