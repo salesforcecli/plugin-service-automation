@@ -17,10 +17,15 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { existsSync } from 'node:fs';
-import { Connection } from '@salesforce/core';
+import { Connection, SfError } from '@salesforce/core';
 import { ComponentSet } from '@salesforce/source-deploy-retrieve';
 import JSZip from 'jszip';
 import { ServiceProcessDataRetrievalFailure } from '../errors.js';
+import {
+  MIN_SERVICE_PROCESS_API_VERSION,
+  isApiVersionAtLeast,
+  getUnsupportedApiVersionMessage,
+} from '../utils/apiVersion.js';
 import { validateRequest } from '../validation/validators/retrieveServiceProcessRequestValidator.js';
 import { ServiceProcessRetrieveRequest } from '../types/types.js';
 import { getFlowDeploymentIntentByName } from '../utils/flow/flowMetadata.js';
@@ -266,6 +271,10 @@ export async function generateZippedArtifacts(
 }
 
 export async function retrieveServiceProcess(request: ServiceProcessRetrieveRequest): Promise<void> {
+  const effectiveVersion = request.orgMetadata.apiVersion;
+  if (!isApiVersionAtLeast(effectiveVersion, MIN_SERVICE_PROCESS_API_VERSION)) {
+    throw new SfError(getUnsupportedApiVersionMessage(effectiveVersion), 'UnsupportedApiVersion');
+  }
   await validateRequest(request);
   const serviceProcessData = await retrieveServiceProcessDetails(
     request.serviceProcessId,

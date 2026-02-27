@@ -16,9 +16,14 @@
 
 import { resolve } from 'node:path';
 import { SfCommand, Flags } from '@salesforce/sf-plugins-core';
-import { Messages, Org } from '@salesforce/core';
+import { Messages, Org, SfError } from '@salesforce/core';
 import { retrieveServiceProcess } from '../../services/retrieveServiceProcessService.js';
 import { ServiceProcessRetrieveRequest, OrgMetadata } from '../../types/types.js';
+import {
+  MIN_SERVICE_PROCESS_API_VERSION,
+  isApiVersionAtLeast,
+  getUnsupportedApiVersionMessage,
+} from '../../utils/apiVersion.js';
 
 Messages.importMessagesDirectoryFromMetaUrl(import.meta.url);
 const messages = Messages.loadMessages('@salesforce/plugin-service-automation', 'service-process.retrieve');
@@ -73,6 +78,12 @@ export default class ServiceProcessRetrieve extends SfCommand<ServiceProcessRetr
   public async run(): Promise<ServiceProcessRetrieveResult> {
     const { flags } = await this.parse(ServiceProcessRetrieve);
     const request: ServiceProcessRetrieveRequest = ServiceProcessRetrieve.serviceProcessRetrieveRequest(flags);
+    if (!isApiVersionAtLeast(request.orgMetadata.apiVersion, MIN_SERVICE_PROCESS_API_VERSION)) {
+      throw new SfError(
+        getUnsupportedApiVersionMessage(request.orgMetadata.apiVersion, Boolean(flags['api-version'])),
+        'UnsupportedApiVersion'
+      );
+    }
     this.spinner.start('Starting Service Process Retrieve');
     await retrieveServiceProcess(request);
     this.spinner.stop('✅');

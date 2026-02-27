@@ -15,6 +15,7 @@
  */
 
 import type { Validator } from '../types.js';
+import { minApiVersionValidator } from './MinApiVersionValidator.js';
 import { customFieldsValidator } from './CustomFieldsValidator.js';
 import { flowDeploymentValidator } from './FlowDeploymentValidator.js';
 import { apexClassPresenceValidator } from './ApexClassPresenceValidator.js';
@@ -24,6 +25,7 @@ import { fulfillmentFlowUniquenessValidator } from './FulfillmentFlowUniquenessV
 import { intakeFlowExistenceValidator } from './IntakeFlowExistenceValidator.js';
 import { fulfillmentFlowExistenceValidator } from './FulfillmentFlowExistenceValidator.js';
 
+export { minApiVersionValidator } from './MinApiVersionValidator.js';
 export { customFieldsValidator } from './CustomFieldsValidator.js';
 export { flowDeploymentValidator } from './FlowDeploymentValidator.js';
 export { apexClassPresenceValidator } from './ApexClassPresenceValidator.js';
@@ -39,6 +41,7 @@ export { fulfillmentFlowExistenceValidator } from './FulfillmentFlowExistenceVal
  * fulfillment flow uniqueness (deploy mode), fulfillment flow existence (link mode).
  */
 export const builtInValidators: Validator[] = [
+  minApiVersionValidator,
   orgApiVersionValidator,
   customFieldsValidator,
   flowDeploymentValidator,
@@ -63,6 +66,11 @@ export type ValidatorWithMetadata = {
  * These are used when running validations with progress callbacks.
  */
 export const builtInValidatorsWithMetadata: ValidatorWithMetadata[] = [
+  {
+    validator: minApiVersionValidator,
+    name: 'MinApiVersion',
+    description: 'Minimum API version check',
+  },
   {
     validator: orgApiVersionValidator,
     name: 'OrgApiVersion',
