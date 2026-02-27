@@ -17,6 +17,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { TestContext } from '@salesforce/core/testSetup';
+import { Connection } from '@salesforce/core';
 import { expect } from 'chai';
 import { stubSfCommandUx } from '@salesforce/sf-plugins-core';
 import JSZip from 'jszip';
@@ -27,6 +28,7 @@ describe('service-process deploy', () => {
 
   beforeEach(() => {
     stubSfCommandUx($$.SANDBOX);
+    $$.SANDBOX.stub(Connection.prototype, 'getApiVersion').returns('66.0');
   });
 
   afterEach(() => {
