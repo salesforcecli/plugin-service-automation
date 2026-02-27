@@ -25,6 +25,7 @@ import { validateRequest } from '../validation/validators/retrieveServiceProcess
 import { ServiceProcessRetrieveRequest } from '../types/types.js';
 import { getFlowDeploymentIntentByName } from '../utils/flow/flowMetadata.js';
 import type { DeploymentMetadata } from '../workspace/deploymentMetadata.js';
+import type { RetrieveStages } from '../utils/retrieveStages.js';
 import {
   createZipFile,
   createTemporaryDirectory,
@@ -51,13 +52,17 @@ export async function retrieveServiceProcessDetails(
   }
 }
 
+export type ExtractDependenciesResult = {
+  deps: Record<string, unknown>;
+  flowMetadata: Array<{ apiName: string; xmlContent: string }>;
+};
+
 export async function extractServiceProcessDependencies(
   serviceProcessData: Record<string, unknown>,
   connection: Connection,
   outputDir: string
-): Promise<Record<string, unknown>> {
+): Promise<ExtractDependenciesResult> {
   const serviceProcessDeps: Record<string, unknown> = {};
-
   const intakeForm = serviceProcessData.intakeForm as Record<string, unknown> | undefined;
   const fulfillmentFlow = serviceProcessData.fulfillmentFlow as Record<string, unknown> | undefined;
 
@@ -81,10 +86,13 @@ export async function extractServiceProcessDependencies(
     }
   }
 
-  if (flowApiNames.length > 0) {
-    const flowMetadata = await fetchFlows(flowApiNames, connection, outputDir);
+  const flowMetadata: Array<{ apiName: string; xmlContent: string }> = [];
 
-    for (const flow of flowMetadata) {
+  if (flowApiNames.length > 0) {
+    const fetched = await fetchFlows(flowApiNames, connection, outputDir);
+    flowMetadata.push(...fetched);
+
+    for (const flow of fetched) {
       if (intakeForm && flow.apiName === (intakeForm.apiName as string)) {
         serviceProcessDeps.intakeForm = flow.xmlContent;
       }
@@ -94,7 +102,57 @@ export async function extractServiceProcessDependencies(
     }
   }
 
-  return serviceProcessDeps;
+  return { deps: serviceProcessDeps, flowMetadata };
+}
+
+/**
+ * Derive counts for "Resolving related components" from service process API data.
+ */
+function getResolvingCounts(serviceProcessData: Record<string, unknown>): {
+  preprocessors: number;
+  intakeFlow: number;
+  fulfillmentFlow: number;
+} {
+  const preProcessors = serviceProcessData.preProcessors;
+  const preprocessors = Array.isArray(preProcessors) ? preProcessors.length : 0;
+  const intakeFlow = serviceProcessData.intakeForm != null ? 1 : 0;
+  const fulfillmentFlow = serviceProcessData.fulfillmentFlow != null ? 1 : 0;
+  return { preprocessors, intakeFlow, fulfillmentFlow };
+}
+
+/**
+ * Build display lines for "Retrieving metadata" (flow names and preprocessor names).
+ */
+function getRetrievingMetadataLines(
+  serviceProcessData: Record<string, unknown>,
+  flowMetadata: Array<{ apiName: string }>
+): Array<{ label: string; value: string }> {
+  const lines: Array<{ label: string; value: string }> = [];
+  const intakeForm = serviceProcessData.intakeForm as Record<string, unknown> | undefined;
+  const fulfillmentFlow = serviceProcessData.fulfillmentFlow as Record<string, unknown> | undefined;
+
+  for (const flow of flowMetadata) {
+    if (intakeForm && flow.apiName === (intakeForm.apiName as string)) {
+      lines.push({ label: 'Intake Flow', value: flow.apiName });
+    }
+    if (fulfillmentFlow && flow.apiName === (fulfillmentFlow.apiName as string)) {
+      lines.push({ label: 'Fulfillment Flow', value: flow.apiName });
+    }
+  }
+
+  const preProcessors = serviceProcessData.preProcessors;
+  if (Array.isArray(preProcessors)) {
+    for (const pp of preProcessors) {
+      const name =
+        (pp as { devNameOrId?: string }).devNameOrId ??
+        (pp as { apiName?: string }).apiName ??
+        (pp as { name?: string }).name ??
+        'Preprocessor';
+      lines.push({ label: 'Preprocessor', value: String(name) });
+    }
+  }
+
+  return lines;
 }
 
 export async function fetchFlows(
@@ -208,10 +266,13 @@ async function generateDeploymentMetadata(
 export async function generateZippedArtifacts(
   request: ServiceProcessRetrieveRequest,
   serviceProcessData: Record<string, unknown>,
-  serviceProcessDeps: Record<string, unknown>
-): Promise<void> {
+  serviceProcessDeps: Record<string, unknown>,
+  retrieveStages?: RetrieveStages
+): Promise<string> {
   const zipFileName = `${request.serviceProcessId}.zip`;
   const zipFilePath = join(request.outputDir, zipFileName);
+
+  retrieveStages?.startPhase('Generating consolidated package');
 
   const serviceProcessJson = JSON.stringify(serviceProcessData, null, 2);
   const zip = new JSZip();
@@ -262,21 +323,89 @@ export async function generateZippedArtifacts(
     flowMetadataFolder?.file(`${fulfillmentFlowApiName}.flow-meta.xml`, fulfillmentFormXmlContent);
   }
 
+  retrieveStages?.succeedPhase('Generating consolidated package');
+  retrieveStages?.startPhase('Creating ZIP archive');
+
   await createZipFile(zipFilePath, zip);
+
+  retrieveStages?.succeedPhase('Creating ZIP archive');
+  return zipFilePath;
 }
 
-export async function retrieveServiceProcess(request: ServiceProcessRetrieveRequest): Promise<void> {
-  await validateRequest(request);
-  const serviceProcessData = await retrieveServiceProcessDetails(
-    request.serviceProcessId,
-    request.connection,
-    request.apiVersion
-  );
-  const serviceProcessDeps = await extractServiceProcessDependencies(
-    serviceProcessData,
-    request.connection,
-    request.outputDir
-  );
-  await ensureDirectoryExists(request.outputDir);
-  await generateZippedArtifacts(request, serviceProcessData, serviceProcessDeps);
+export type RetrieveServiceProcessResult = {
+  zipFilePath: string;
+};
+
+type RetrievePhase =
+  | 'Validating Request'
+  | 'Fetching Service Process'
+  | 'Resolving related components'
+  | 'Retrieving metadata'
+  | 'Generating consolidated package'
+  | 'Creating ZIP archive'
+  | 'Done';
+
+export async function retrieveServiceProcess(
+  request: ServiceProcessRetrieveRequest,
+  retrieveStages?: RetrieveStages
+): Promise<RetrieveServiceProcessResult> {
+  let currentPhase: RetrievePhase = 'Validating Request';
+
+  try {
+    retrieveStages?.startPhase('Validating Request');
+    currentPhase = 'Validating Request';
+    await validateRequest(request);
+    retrieveStages?.succeedPhase('Validating Request');
+
+    retrieveStages?.startPhase('Fetching Service Process');
+    currentPhase = 'Fetching Service Process';
+    const serviceProcessData = await retrieveServiceProcessDetails(
+      request.serviceProcessId,
+      request.connection,
+      request.apiVersion
+    );
+    const name = (serviceProcessData.name as string) ?? 'Unknown';
+    const recordId = (serviceProcessData.id as string) ?? request.serviceProcessId;
+    const productCode =
+      serviceProcessData.productCode != null ? String(serviceProcessData.productCode) : undefined;
+    retrieveStages?.setServiceProcessDetails(name, recordId, productCode);
+    retrieveStages?.succeedPhase('Fetching Service Process');
+
+    retrieveStages?.startPhase('Resolving related components');
+    currentPhase = 'Resolving related components';
+    const counts = getResolvingCounts(serviceProcessData);
+    retrieveStages?.setResolvingCounts(counts.preprocessors, counts.intakeFlow, counts.fulfillmentFlow);
+    retrieveStages?.succeedPhase('Resolving related components');
+
+    retrieveStages?.startPhase('Retrieving metadata');
+    currentPhase = 'Retrieving metadata';
+    const { deps: serviceProcessDeps, flowMetadata } = await extractServiceProcessDependencies(
+      serviceProcessData,
+      request.connection,
+      request.outputDir
+    );
+    const retrievingLines = getRetrievingMetadataLines(serviceProcessData, flowMetadata);
+    retrieveStages?.setRetrievingMetadataLines(retrievingLines);
+    retrieveStages?.succeedPhase('Retrieving metadata');
+
+    await ensureDirectoryExists(request.outputDir);
+
+    currentPhase = 'Generating consolidated package';
+    const zipFilePath = await generateZippedArtifacts(
+      request,
+      serviceProcessData,
+      serviceProcessDeps,
+      retrieveStages
+    );
+
+    retrieveStages?.startPhase('Done');
+    currentPhase = 'Done';
+    retrieveStages?.succeedPhase('Done');
+    retrieveStages?.stop();
+
+    return { zipFilePath };
+  } catch (error) {
+    retrieveStages?.failPhase(currentPhase, error instanceof Error ? error : new Error(String(error)));
+    throw error;
+  }
 }
