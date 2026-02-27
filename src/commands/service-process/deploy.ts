@@ -23,6 +23,11 @@ import { DeployService } from '../../services/deployserviceprocess.js';
 import { DeploymentStages } from '../../utils/deploymentStages.js';
 import type { DeploymentSummary } from '../../utils/deploymentStages.js';
 import { getFormattedMessageForLog, getValidationErrorMessage } from '../../utils/errorFormatter.js';
+import {
+  MIN_SERVICE_PROCESS_API_VERSION,
+  isApiVersionAtLeast,
+  getUnsupportedApiVersionMessage,
+} from '../../utils/apiVersion.js';
 
 Messages.importMessagesDirectoryFromMetaUrl(import.meta.url);
 const messages = Messages.loadMessages('@salesforce/plugin-service-automation', 'service-process.deploy');
@@ -91,14 +96,24 @@ export default class ServiceProcessDeploy extends SfCommand<ServiceProcessDeploy
       throw new SfError('Required flag input-zip is missing.', 'MissingRequiredFlag');
     }
 
+    const apiVersion = flags['api-version'];
+    const connection = flags['target-org'].getConnection(apiVersion);
+    const effectiveApiVersion = apiVersion ?? connection.getApiVersion();
+    if (!isApiVersionAtLeast(effectiveApiVersion, MIN_SERVICE_PROCESS_API_VERSION)) {
+      throw new SfError(
+        getUnsupportedApiVersionMessage(effectiveApiVersion, Boolean(apiVersion)),
+        'UnsupportedApiVersion'
+      );
+    }
+
     const logger = await Logger.child('service-process-deploy');
     const runId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
     logger.info(`[${runId}] Deploy started: inputZip=${inputZip}`);
-    const apiVersion = flags['api-version'];
+    const deployApiVersion = flags['api-version'];
     const deployStages = new DeploymentStages(
       this,
       'Service Process Deployment',
-      flags['target-org'].getConnection(apiVersion).instanceUrl
+      flags['target-org'].getConnection(deployApiVersion).instanceUrl
     );
     deployStages.start();
     const startTime = Date.now();
@@ -153,6 +168,7 @@ export default class ServiceProcessDeploy extends SfCommand<ServiceProcessDeploy
   }
 
   /** Handle deploy failure: log, stop stages, show summary, then throw. */
+  // eslint-disable-next-line complexity
   private handleDeployFailure(
     err: unknown,
     deployStages: DeploymentStages,
@@ -192,6 +208,12 @@ export default class ServiceProcessDeploy extends SfCommand<ServiceProcessDeploy
         throw new SfError(message, code, [
           'Use `sf service-process retrieve ...` to get a metadata-supported package.',
         ]);
+      }
+      if (isValidationFailure && err instanceof ValidationError && err.failures?.length) {
+        const minApiFailure = err.failures.find((f) => f.name === 'MinApiVersion');
+        if (minApiFailure?.status === 'FAIL' && minApiFailure.message) {
+          throw new SfError(minApiFailure.message, 'UnsupportedApiVersion');
+        }
       }
       throw new SfError(message, code);
     }

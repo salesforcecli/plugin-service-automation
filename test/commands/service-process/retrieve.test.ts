@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 import { TestContext } from '@salesforce/core/testSetup';
+import { Connection } from '@salesforce/core';
 import { expect } from 'chai';
 import { stubSfCommandUx } from '@salesforce/sf-plugins-core';
 import ServiceProcessRetrieve from '../../../src/commands/service-process/retrieve.js';
@@ -23,6 +24,7 @@ describe('service-process retrieve', () => {
 
   beforeEach(() => {
     stubSfCommandUx($$.SANDBOX);
+    $$.SANDBOX.stub(Connection.prototype, 'getApiVersion').returns('66.0');
   });
 
   afterEach(() => {

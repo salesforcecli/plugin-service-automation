@@ -18,6 +18,7 @@ export type { ValidationResult, ValidationContext, CustomFieldRef, Validator, Lo
 export { ValidationRunner } from './ValidationRunner.js';
 export type { RunValidationsResult } from './ValidationRunner.js';
 export {
+  minApiVersionValidator,
   customFieldsValidator,
   flowDeploymentValidator,
   apexClassPresenceValidator,
