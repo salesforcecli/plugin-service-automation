@@ -22,6 +22,22 @@ Path to a zip file containing metadata for deployment.
 
 Path to a zip file containing metadata for deployment.
 
+# flags.link-intake.summary
+
+Links existing intake artifact (flow).
+
+# flags.link-intake.description
+
+When set, updates deployment-metadata.json for the intake flow: sets deploymentIntent to "link" and namespace to the target org's namespace. Applied during preparation, before validations. Currently only flow is supported.
+
+# flags.link-fulfillment.summary
+
+Links existing fulfillment artifact (flow, flow orchestrator).
+
+# flags.link-fulfillment.description
+
+When set, updates deployment-metadata.json for the fulfillment flow: sets deploymentIntent to "link" and namespace to the target org's namespace. Applied during preparation, before validations. Currently supports flow and flow orchestrator.
+
 # examples
 
 - Deploy a Service Process from a zip file:

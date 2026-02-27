@@ -20,14 +20,18 @@ import type { Connection, Org } from '@salesforce/core';
 import type { Logger } from '@salesforce/core';
 import type { SfCommand } from '@salesforce/sf-plugins-core';
 import { METADATA_FLOWS_RELATIVE_PATH } from '../constants.js';
-import { DeployError, TemplateDataError } from '../errors.js';
+import { DeployError, MissingMetadataFileError, TemplateDataError } from '../errors.js';
 import { type DeployedFlowInfo } from '../utils/flow/deployflow.js';
 import { getFlowDefinitionIds, getOrgNamespace } from '../utils/flow/flowMetadata.js';
 import { DeployWorkspace } from '../workspace/deployWorkspace.js';
 import { FlowTransformer } from '../workspace/flowTransformer.js';
 import { FlowPathResolver } from '../workspace/flowPath.js';
 import { TemplateDataReader } from '../workspace/templateData.js';
-import { readDeploymentMetadata, type DeploymentMetadata } from '../workspace/deploymentMetadata.js';
+import {
+  readServiceProcessMetadata,
+  writeServiceProcessMetadata,
+  type DeploymentMetadata,
+} from '../workspace/deploymentMetadata.js';
 import type { DeployedFlowNames } from '../workspace/serviceProcessTransformer.js';
 import { ValidationRunner, builtInValidatorsWithMetadata } from '../validation/index.js';
 import type { ValidationContext } from '../validation/types.js';
@@ -58,6 +62,10 @@ export type DeployServiceOptions = {
   deployStages?: DeploymentStages;
   /** Optional: @salesforce/core Logger for diagnostic output (respects global --loglevel or SF_LOG_LEVEL). */
   logger?: Logger;
+  /** When true, set intake flow deploymentIntent to "link" and namespace to target org's namespace in deployment-metadata.json during preparation. */
+  linkIntake?: boolean;
+  /** When true, set fulfillment flow deploymentIntent to "link" and namespace to target org's namespace in deployment-metadata.json during preparation. */
+  linkFulfillment?: boolean;
   dependencies?: DeployServiceProcessDependencies;
 };
 
@@ -71,6 +79,8 @@ export class DeployService {
   private readonly command?: SfCommand<unknown>;
   private readonly deployStages?: DeploymentStages;
   private readonly logger?: Logger;
+  private readonly linkIntake: boolean;
+  private readonly linkFulfillment: boolean;
   private readonly deps: Required<DeployServiceProcessDependencies>;
 
   public constructor(options: DeployServiceOptions) {
@@ -79,6 +89,8 @@ export class DeployService {
     this.command = options.command;
     this.deployStages = options.deployStages;
     this.logger = options.logger;
+    this.linkIntake = options.linkIntake ?? false;
+    this.linkFulfillment = options.linkFulfillment ?? false;
     this.deps = { ...defaults, ...options.dependencies } as Required<DeployServiceProcessDependencies>;
   }
 
@@ -126,20 +138,11 @@ export class DeployService {
     return items;
   }
 
-  /** Format milliseconds as "Xm Y.YYs" or "Y.YYs". */
-  private static formatElapsedTime(ms: number): string {
-    const totalMinutes = Math.floor(ms / 60_000);
-    const totalSeconds = ((ms % 60_000) / 1000).toFixed(2);
-    return totalMinutes > 0 ? `${totalMinutes}m ${totalSeconds}s` : `${totalSeconds}s`;
-  }
-
   /**
    * Main deployment orchestrator.
    * Coordinates the 5 deployment phases: prepare, validate, deploy SP, deploy flows, and rollback (if needed).
    */
   public async deploy(inputZip: string): Promise<DeployServiceProcessResult> {
-    const deploymentStartTime = Date.now();
-
     // Phase 1: Prepare deployment (extract workspace, read metadata, validate inputs)
     this.deployStages?.startPhase('Preparing connection');
     const context = await this.prepareDeployment(inputZip);
@@ -187,7 +190,7 @@ export class DeployService {
         }
         // Phase 5: Handle rollback if flow deployment/linking fails
         this.logger?.error('Deploy phase failed, starting rollback: %s', (error as Error).message);
-        await this.handleRollback(context, error as Error, deploymentStartTime);
+        await this.handleRollback(context, error as Error);
         throw error;
       }
 
@@ -300,15 +303,38 @@ export class DeployService {
     // Extract workspace
     const { workspace, cleanup: cleanupWorkspace } = await DeployWorkspace.extractZipToWorkspace(inputZip);
 
-    const { filePaths, templateDataExtract } = TemplateDataReader.deriveFlowsAndTemplateData(workspace);
+    // Get connection and target org namespace early so we can apply --link-intake / --link-fulfillment overrides before validations
+    const connection = this.org.getConnection(this.expectedApiVersion);
+    const targetOrgNamespace = await getOrgNamespace(connection);
 
-    // Read deployment metadata (required for flow validation)
-    const deploymentMetadata = await readDeploymentMetadata(workspace);
-    if (!deploymentMetadata) {
-      throw new TemplateDataError(
-        'deployment-metadata.json not found. Ensure package was retrieved with metadata support.'
-      );
+    // Read combined service-process.metadata.json (org + deployment metadata)
+    const serviceProcessMetadata = await readServiceProcessMetadata(workspace);
+    if (!serviceProcessMetadata) {
+      throw new MissingMetadataFileError('service-process.metadata.json not found in the input zip.');
     }
+    const deploymentMetadata: DeploymentMetadata = {
+      version: serviceProcessMetadata.version,
+      intakeFlow: serviceProcessMetadata.serviceProcess.intakeFlow,
+      fulfillmentFlow: serviceProcessMetadata.serviceProcess.fulfillmentFlow,
+    };
+
+    // Apply --link-intake / --link-fulfillment overrides: set deploymentIntent to "link" and namespace to target org's namespace
+    let metadataUpdated = false;
+    if (this.linkIntake && deploymentMetadata.intakeFlow) {
+      deploymentMetadata.intakeFlow.deploymentIntent = 'link';
+      deploymentMetadata.intakeFlow.namespace = targetOrgNamespace ?? null;
+      metadataUpdated = true;
+    }
+    if (this.linkFulfillment && deploymentMetadata.fulfillmentFlow) {
+      deploymentMetadata.fulfillmentFlow.deploymentIntent = 'link';
+      deploymentMetadata.fulfillmentFlow.namespace = targetOrgNamespace ?? null;
+      metadataUpdated = true;
+    }
+    if (metadataUpdated) {
+      await writeServiceProcessMetadata(workspace, serviceProcessMetadata);
+    }
+
+    const { filePaths, templateDataExtract } = TemplateDataReader.deriveFlowsAndTemplateData(workspace);
 
     // Check if any flows need deployment (vs linking to existing flows)
     const needsIntakeDeployment = deploymentMetadata.intakeFlow?.deploymentIntent === 'deploy';
@@ -337,6 +363,7 @@ export class DeployService {
       workspace,
       inputZip,
       org,
+      connection,
       deploymentMetadata,
       templateDataExtract,
       filePaths,
@@ -356,7 +383,7 @@ export class DeployService {
 
     try {
       const metadataApiVersion = TemplateDataReader.readOrgMetadataVersionFromDir(context.workspace);
-      const targetOrgNamespace = await getOrgNamespace(context.org.getConnection());
+      const targetOrgNamespace = await getOrgNamespace(context.connection);
 
       const { apexClassNames, customFields } = context.templateDataExtract;
 
@@ -423,7 +450,7 @@ export class DeployService {
       this.deployStages?.startPhase('Validating deployment');
 
       const validationContext: ValidationContext = {
-        conn: context.org.getConnection(),
+        conn: context.connection,
         org: context.org,
         expectedApiVersion: this.expectedApiVersion,
         metadataApiVersion,
@@ -468,7 +495,7 @@ export class DeployService {
 
     try {
       const { deps } = this;
-      const targetOrgNamespace = await getOrgNamespace(context.org.getConnection());
+      const targetOrgNamespace = await getOrgNamespace(context.connection);
 
       // Transform templateData.json
       // eslint-disable-next-line no-param-reassign
@@ -489,7 +516,7 @@ export class DeployService {
       // eslint-disable-next-line no-param-reassign
       context.cleanupWorkspaceZip = cleanup;
 
-      const conn = context.org.getConnection();
+      const conn = context.connection;
       const uploadResult = await deps.uploadZip(conn, zipPath);
       // eslint-disable-next-line no-param-reassign
       context.contentDocumentId = uploadResult.contentDocumentId;
@@ -634,7 +661,7 @@ export class DeployService {
 
       // Deploy flows
       // eslint-disable-next-line no-param-reassign
-      context.deployedFlows = await deps.deployFlowsFn(context.org, context.filePaths, {
+      context.deployedFlows = await deps.deployFlowsFn(context.connection, context.filePaths, {
         checkOnly: false,
         logger: this.logger,
       });
@@ -648,7 +675,7 @@ export class DeployService {
       // Note: Two types of IDs exist:
       // - InteractionDefinitionVersion ID (f.id) - shown to user, comes from metadata API deployment
       // - FlowDefinition ID (f.definitionId) - used for catalog linking, fetched from Tooling API
-      const connection = context.org.getConnection();
+      const connection = context.connection;
       const definitionIds = await getFlowDefinitionIds(
         connection,
         context.deployedFlows.map((f) => f.fullName)
@@ -689,7 +716,7 @@ export class DeployService {
     try {
       // Link flows to Service Process (if flows were deployed)
       if (context.targetServiceProcessId && context.deployedFlows && context.deployedFlows.length > 0) {
-        const connection = context.org.getConnection();
+        const connection = context.connection;
         await CatalogItemPatcher.patchCatalogItemWithFlowIds(
           connection,
           context.targetServiceProcessId,
@@ -712,7 +739,7 @@ export class DeployService {
   /**
    * Phase 5: Handle rollback when deployment fails.
    */
-  private async handleRollback(context: DeploymentContext, error: Error, deploymentStartTime: number): Promise<void> {
+  private async handleRollback(context: DeploymentContext, error: Error): Promise<void> {
     this.logger?.info('Starting rollback (scenario: %s)', context.rollback.scenario ?? 'unknown');
     this.logger?.debug('Deployment failed: %s', error.message);
 
@@ -749,13 +776,7 @@ export class DeployService {
         }
       };
 
-      await this.performRollback(
-        context.org.getConnection(),
-        context.rollback.scenario!,
-        rollbackData,
-        this.logger,
-        onProgress
-      );
+      await this.performRollback(context.connection, context.rollback.scenario!, rollbackData, this.logger, onProgress);
 
       const duration = Date.now() - rollbackStartTime;
       rollbackStages.finish(duration);
@@ -767,10 +788,7 @@ export class DeployService {
     }
 
     if (this.command && !this.command.jsonEnabled()) {
-      this.command.log('Status: Failed');
-      const totalDuration = Date.now() - deploymentStartTime;
-      this.command.log(`Total Elapsed Time: ${DeployService.formatElapsedTime(totalDuration)}\n`);
-      // Manual cleanup when rollback failed (shown once after Status/Time)
+      // Manual cleanup when rollback failed (shown once after rollback section)
       if (rollbackFailed) {
         this.command.log('Manual cleanup in the target org is required. Delete the following artifacts:\n');
         this.command.log(`  Service Process (Product2): ${context.targetServiceProcessId}`);
@@ -815,12 +833,16 @@ export async function deployServiceProcess(options: {
   inputZip: string;
   expectedApiVersion?: string;
   logger?: Logger;
+  linkIntake?: boolean;
+  linkFulfillment?: boolean;
   dependencies?: DeployServiceProcessDependencies;
 }): Promise<DeployServiceProcessResult> {
   const service = new DeployService({
     org: options.org,
     expectedApiVersion: options.expectedApiVersion,
     logger: options.logger,
+    linkIntake: options.linkIntake,
+    linkFulfillment: options.linkFulfillment,
     dependencies: options.dependencies,
   });
   return service.deploy(options.inputZip);

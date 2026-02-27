@@ -42,9 +42,9 @@ export type DeployServiceProcessDependencies = {
     contentDocumentId: string
   ) => Promise<{ deploymentResult?: string; status?: string; templateId?: string }>;
   deployFlowsFn?: (
-    org: Org,
+    orgOrConnection: Org | Connection,
     filePaths: string[],
-    options: { checkOnly: boolean; logger?: Logger }
+    options: { checkOnly: boolean; logger?: Logger; apiVersion?: string }
   ) => Promise<DeployedFlowInfo[]>;
 };
 
@@ -73,8 +73,8 @@ export const defaults = {
     return postConnect<{ deploymentResult?: string; status?: string; templateId?: string }>(conn, deployPath, {});
   },
   deployFlowsFn: (
-    org: Org,
+    orgOrConnection: Org | Connection,
     filePaths: string[],
-    options: { checkOnly: boolean; logger?: Logger }
-  ): Promise<DeployedFlowInfo[]> => deployFlows(org, filePaths, options),
+    options: { checkOnly: boolean; logger?: Logger; apiVersion?: string }
+  ): Promise<DeployedFlowInfo[]> => deployFlows(orgOrConnection, filePaths, options),
 };

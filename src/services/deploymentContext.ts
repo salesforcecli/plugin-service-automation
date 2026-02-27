@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import type { Org, Logger } from '@salesforce/core';
+import type { Org, Logger, Connection } from '@salesforce/core';
 import type { DeployedFlowInfo } from '../utils/flow/deployflow.js';
 import type { DeploymentMetadata } from '../workspace/deploymentMetadata.js';
 import type { TemplateDataExtract } from '../workspace/templateData.js';
@@ -30,6 +30,8 @@ export type DeploymentContext = {
   readonly workspace: string;
   readonly inputZip: string;
   readonly org: Org;
+  /** Connection for API calls; uses --api-version when provided, otherwise org default. */
+  readonly connection: Connection;
 
   // Deployment metadata and configuration
   readonly deploymentMetadata: DeploymentMetadata;
@@ -82,6 +84,7 @@ export function createDeploymentContext(options: {
   workspace: string;
   inputZip: string;
   org: Org;
+  connection: Connection;
   deploymentMetadata: DeploymentMetadata;
   templateDataExtract: TemplateDataExtract;
   filePaths: string[];
@@ -95,6 +98,7 @@ export function createDeploymentContext(options: {
     workspace: options.workspace,
     inputZip: options.inputZip,
     org: options.org,
+    connection: options.connection,
     deploymentMetadata: options.deploymentMetadata,
     templateDataExtract: options.templateDataExtract,
     filePaths: options.filePaths,

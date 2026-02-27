@@ -214,16 +214,24 @@ export async function generateZippedArtifacts(
   const zipFilePath = join(request.outputDir, zipFileName);
 
   const serviceProcessJson = JSON.stringify(serviceProcessData, null, 2);
-  const orgMetadataJson = JSON.stringify(request.orgMetadata, null, 2);
-
-  // Generate deployment metadata
-  const deploymentMetadata = await generateDeploymentMetadata(serviceProcessData, request.connection);
-  const deploymentMetadataJson = JSON.stringify(deploymentMetadata, null, 2);
-
   const zip = new JSZip();
   zip.file('templateData.json', serviceProcessJson);
-  zip.file('org-metadata.json', orgMetadataJson);
-  zip.file('deployment-metadata.json', deploymentMetadataJson);
+
+  // Single combined metadata file (org + service process flows)
+  const serviceProcessMetadata = await generateDeploymentMetadata(serviceProcessData, request.connection);
+  const combinedMetadata = {
+    version: '1.0',
+    org: {
+      instanceUrl: request.orgMetadata.orgInstanceUrl,
+      id: request.orgMetadata.orgId,
+      apiVersion: request.orgMetadata.apiVersion,
+    },
+    serviceProcess: {
+      intakeFlow: serviceProcessMetadata.intakeFlow,
+      fulfillmentFlow: serviceProcessMetadata.fulfillmentFlow,
+    },
+  };
+  zip.file('service-process.metadata.json', JSON.stringify(combinedMetadata, null, 2));
 
   const flowMetadataFolder = zip.folder('metadata')?.folder('flows');
 

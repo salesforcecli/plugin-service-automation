@@ -20,6 +20,9 @@ export const TEMPLATE_DATA_FILENAME = 'templateData.json';
 /** Filename for org metadata in workspace (e.g. from retrieve); contains apiVersion for validation. */
 export const ORG_METADATA_FILENAME = 'org-metadata.json';
 
+/** Filename for combined service process metadata (org + deployment) written by retrieve and read by deploy. */
+export const SERVICE_PROCESS_METADATA_FILENAME = 'service-process.metadata.json';
+
 /** Relative path under workspace root where flow files live: metadata/flows. */
 export const METADATA_FLOWS_RELATIVE_PATH = 'metadata/flows';
 

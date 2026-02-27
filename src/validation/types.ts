@@ -58,7 +58,7 @@ export type ValidationContext = {
   org?: Org;
   /** Optional: when set, used as reference version (e.g. from --api-version flag); otherwise org's API version is used. */
   expectedApiVersion?: string;
-  /** Optional: API version from org-metadata.json in the zip; validated against expectedApiVersion or org version. */
+  /** Optional: API version from service-process.metadata.json (org.apiVersion) in the zip; validated against expectedApiVersion or org version. */
   metadataApiVersion?: string;
   /** Absolute paths to .flow-meta.xml files for flow deployment validation. */
   flowFilePaths?: string[];

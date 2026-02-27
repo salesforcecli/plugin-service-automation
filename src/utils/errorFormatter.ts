@@ -66,6 +66,23 @@ export function getValidationErrorHeader(error: ValidationError): string {
   return 'Validation failed';
 }
 
+/**
+ * Get full validation error message (header + bullet items) for use as SfError message.
+ * Ensures the thrown error message includes all validation issues, not just the header.
+ *
+ * @param error - ValidationError with failures array
+ * @returns Full message string (header + newline + bullet lines)
+ */
+export function getValidationErrorMessage(error: ValidationError): string {
+  if (!error.failures || error.failures.length === 0) {
+    return error.message ?? 'Validation failed';
+  }
+  const header = getValidationErrorHeader(error);
+  const items = formatValidationErrorAsItems(error);
+  const bulletLines = items.map((i) => `   • ${i.label}: ${i.value}`);
+  return bulletLines.length > 0 ? `${header}\n${bulletLines.join('\n')}` : header;
+}
+
 function getCategoryHeader(category: string): string {
   switch (category) {
     case 'duplicate flows':
@@ -160,7 +177,7 @@ export function formatValidationErrorAsItems(error: ValidationError): Array<{ la
 
   const flowDeployment = categorized.get(ErrorCategory.FlowDeployment);
   if (flowDeployment?.length) {
-    items.push(...formatCategoryFailures(flowDeployment, () => 'Flow Deployment'));
+    items.push(...formatCategoryFailures(flowDeployment, () => 'Flow Deployment Failed'));
   }
 
   const other = categorized.get(ErrorCategory.Other);

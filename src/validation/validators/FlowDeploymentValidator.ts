@@ -32,18 +32,23 @@ export class FlowDeploymentValidator {
     }
 
     try {
-      await deployFlows(org, flowFilePaths, { checkOnly: true, logger: ctx.logger });
+      await deployFlows(org, flowFilePaths, {
+        checkOnly: true,
+        logger: ctx.logger,
+        apiVersion: ctx.expectedApiVersion,
+      });
       return {
         name: NAME,
         status: 'PASS',
         message: `Flow deployment check passed (${flowFilePaths.length} flow(s))`,
       };
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
+      const raw = err instanceof Error ? err.message : String(err);
+      const detail = raw.replace(/^Flow deployment failed:\s*/i, '') || raw;
       return {
         name: NAME,
         status: 'FAIL',
-        message: `Flow deployment would fail: ${message}`,
+        message: detail,
       };
     }
   }
