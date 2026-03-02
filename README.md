@@ -2,13 +2,23 @@
 
 [![NPM](https://img.shields.io/npm/v/@salesforce/plugin-service-automation.svg?label=@salesforce/plugin-service-automation)](https://www.npmjs.com/package/@salesforce/plugin-service-automation) [![Downloads/week](https://img.shields.io/npm/dw/@salesforce/plugin-service-automation.svg)](https://npmjs.org/package/@salesforce/plugin-service-automation) [![License](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](https://opensource.org/license/apache-2-0)
 
-This plugin automates the retrieval and deployment of **Unified Catalog Service Processes** and their dependencies (intake flow, fulfillment flow, preprocessor, attributes) between Salesforce orgs—for example, from a Sandbox to Production—without manual ID remapping or data reconstruction.
+Service automation transforms manual tasks into orchestrated workflows—from intake forms to fulfillment—delivering consistency, scalability, and speed. A Service Process combines Data (records) and Metadata (code and configuration). Migrating a process from Sandbox to Production typically requires manual export and deployment of interdependent components—an error-prone and time-consuming approach that can compromise tested configurations.
+
+This plugin automates the extraction, transformation, and loading (ETL) of Service Process definitions, ensuring faster, safer deployments where the validated golden copy is exactly what reaches Production.
+
+### Supported Metadata Types
+
+- Service Process Attributes (anchor, custom, content)
+- Intake Flow
+- Fulfillment Flow
+- Preprocessor (Apex class must already exist in the target org)
+
+**Prerequisite:** All other dependencies (e.g., Apex used in intake/fulfillment flows, Unified Catalog content definition whitelisting, Apex used in preprocessor) must already exist in the target org.
 
 ## Before You Begin
 
 - Install and authenticate the [Salesforce CLI](https://developer.salesforce.com/tools/sfdxcli).
 - Ensure your target org supports the Service Process API (minimum API version 66.0).
-- Prerequisite metadata (Apex, custom objects, etc.) required by the Service Process must already exist in the target org; the plugin does not create them.
 
 ## Install the Plugin
 
@@ -104,7 +114,9 @@ sf service-process retrieve -i 0SPxx0000008ABC -o devSandbox -d ./sp-artifacts
 
 ### sf service-process deploy
 
-Deploys a Unified Catalog Service Process (from a zip produced by `retrieve`) into a target Salesforce org. All prerequisite metadata must already exist in the org; the command does not create missing dependencies.
+Deploys a Unified Catalog Service Process (from a zip produced by `retrieve`) into a target Salesforce org.
+
+**Supported metadata types** (retrieved and deployed by this command): Service Process Attributes (anchor, custom, content), Intake flow, Fulfillment flow. All other dependencies must already exist in the target org—for example, Apex used in intake or fulfillment flows, Apex used for preprocessor, and whitelisting of content definition for Unified Catalog. The command does not create these prerequisites; deployment failures caused by missing dependencies are surfaced.
 
 **USAGE**
 
