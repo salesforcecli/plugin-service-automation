@@ -4,7 +4,7 @@
 
 Service automation transforms manual tasks into orchestrated workflows—from intake forms to fulfillment—delivering consistency, scalability, and speed. A Service Process combines Data (records) and Metadata (code and configuration). Migrating a process from Sandbox to Production typically requires manual export and deployment of interdependent components—an error-prone and time-consuming approach that can compromise tested configurations.
 
-This plugin automates the extraction, transformation, and loading (ETL) of Service Process definitions, ensuring faster, safer deployments where the validated golden copy is exactly what reaches Production.
+This plugin automates the extraction and deployment of Service Process, ensuring faster, safer deployments where the validated golden copy is exactly what reaches Production.
 
 ### Supported Metadata Types
 
@@ -13,7 +13,7 @@ This plugin automates the extraction, transformation, and loading (ETL) of Servi
 - Fulfillment Flow
 - Preprocessor (Apex class must already exist in the target org)
 
-**Prerequisite:** All other dependencies (e.g., Apex used in intake/fulfillment flows, Unified Catalog content definition whitelisting, Apex used in preprocessor) must already exist in the target org.
+**Prerequisite:** All other dependencies (e.g., Apex used in flows, Unified Catalog content definition whitelisting) must already exist in the target org.
 
 ## Before You Begin
 
