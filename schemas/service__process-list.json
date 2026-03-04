@@ -5,11 +5,43 @@
     "ServiceProcessListResult": {
       "type": "object",
       "properties": {
-        "path": {
+        "serviceProcesses": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ServiceProcessDetail"
+          }
+        },
+        "count": {
+          "type": "number"
+        },
+        "total": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "serviceProcesses",
+        "count",
+        "total"
+      ],
+      "additionalProperties": false
+    },
+    "ServiceProcessDetail": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "description": {
           "type": "string"
         }
       },
-      "required": ["path"],
+      "required": [
+        "id",
+        "name"
+      ],
       "additionalProperties": false
     }
   }
