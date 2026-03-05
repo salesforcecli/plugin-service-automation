@@ -61,6 +61,12 @@ export class ServiceProcessRetrieveError extends SfError {
   }
 }
 
+export class InsufficientAccessError extends SfError {
+  public constructor(message: string, name: string = 'InsufficientAccessError') {
+    super(message, name);
+  }
+}
+
 export class ServiceProcessRetrieveValidationError extends ServiceProcessRetrieveError {
   public constructor(message: string) {
     super(message, 'ValidationError');

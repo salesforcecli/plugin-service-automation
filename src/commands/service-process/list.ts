@@ -15,7 +15,8 @@
  */
 
 import { SfCommand, Flags } from '@salesforce/sf-plugins-core';
-import { Messages } from '@salesforce/core';
+import { Messages, SfError } from '@salesforce/core';
+import { InsufficientAccessError } from '../../errors.js';
 
 Messages.importMessagesDirectoryFromMetaUrl(import.meta.url);
 const messages = Messages.loadMessages('@salesforce/plugin-service-automation', 'service-process.list');
@@ -55,40 +56,50 @@ export default class ServiceProcessList extends SfCommand<ServiceProcessListResu
 
     const connection = flags['target-org'].getConnection(flags['api-version']);
 
-    const count = await connection.query<{ count: number }>(
-      "SELECT COUNT() FROM Product2 WHERE UsedFor = 'ServiceProcess'"
-    );
+    try {
+      const count = await connection.query<{ count: number }>(
+        "SELECT COUNT() FROM Product2 WHERE UsedFor = 'ServiceProcess'"
+      );
 
-    const result = await connection.query<{ Name: string; Id: string; Description?: string; IsActive: boolean }>(
-      `SELECT Id, Name, Description, IsActive FROM Product2 WHERE UsedFor = 'ServiceProcess' ORDER BY Name LIMIT ${limit}`
-    );
+      const result = await connection.query<{ Name: string; Id: string; Description?: string; IsActive: boolean }>(
+        `SELECT Id, Name, Description, IsActive FROM Product2 WHERE UsedFor = 'ServiceProcess' ORDER BY Name LIMIT ${limit}`
+      );
 
-    const serviceProcessList = result.records;
+      const serviceProcessList = result.records;
 
-    this.table({
-      data: serviceProcessList.map((record) => ({
-        'Service Process ID': record.Id,
-        'Service Process Name': record.Name,
-        'Status': record.IsActive ? 'Active' : 'Inactive',
-      })),
-      overflow: 'wrap',
-      title: 'Unified Catalog Service Process',
-      titleOptions: {
-        bold: true,
-        underline: true,
-      },
-    });
+      this.table({
+        data: serviceProcessList.map((record) => ({
+          'Service Process ID': record.Id,
+          'Service Process Name': record.Name,
+          Status: record.IsActive ? 'Active' : 'Inactive',
+        })),
+        overflow: 'wrap',
+        title: 'Unified Catalog Service Process',
+        titleOptions: {
+          bold: true,
+          underline: true,
+        },
+      });
 
-    this.log(`\u2714 Displayed ${result.totalSize} of ${count.totalSize} Service Processes\n`);
-    return {
-      serviceProcesses: serviceProcessList.map((record) => ({
-        id: record.Id,
-        name: record.Name,
-        description: record.Description ?? undefined,
-        status: record.IsActive ? 'Active' : 'Inactive',
-      })),
-      count: serviceProcessList.length,
-      total: count.totalSize,
-    };
+      this.log(`\u2714 Displayed ${result.totalSize} of ${count.totalSize} Service Processes\n`);
+      return {
+        serviceProcesses: serviceProcessList.map((record) => ({
+          id: record.Id,
+          name: record.Name,
+          description: record.Description ?? undefined,
+          status: record.IsActive ? 'Active' : 'Inactive',
+        })),
+        count: serviceProcessList.length,
+        total: count.totalSize,
+      };
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      const isUsedForColumnError = errorMessage.includes("No such column 'UsedFor' on entity");
+      const isProduct2NotIdentified = errorMessage.includes("sObject type 'Product2' is not supported.");
+      if (isUsedForColumnError || isProduct2NotIdentified) {
+        throw new InsufficientAccessError('User does not have required permissions.');
+      }
+      throw new SfError('Something went wrong. Check with your admin.');
+    }
   }
 }
