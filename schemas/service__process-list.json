@@ -36,11 +36,15 @@
         },
         "description": {
           "type": "string"
+        },
+        "status": {
+          "type": "string"
         }
       },
       "required": [
         "id",
-        "name"
+        "name",
+        "status"
       ],
       "additionalProperties": false
     }
