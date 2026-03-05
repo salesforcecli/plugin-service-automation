@@ -21,7 +21,15 @@ Messages.importMessagesDirectoryFromMetaUrl(import.meta.url);
 const messages = Messages.loadMessages('@salesforce/plugin-service-automation', 'service-process.list');
 
 export type ServiceProcessListResult = {
-  path: string;
+  serviceProcesses: ServiceProcessDetail[];
+  count: number;
+  total: number;
+};
+
+export type ServiceProcessDetail = {
+  id: string;
+  name: string;
+  description?: string;
 };
 
 export default class ServiceProcessList extends SfCommand<ServiceProcessListResult> {
@@ -45,9 +53,15 @@ export default class ServiceProcessList extends SfCommand<ServiceProcessListResu
     const limit = flags.limit ?? DEFAULT_LIMIT;
 
     const connection = flags['target-org'].getConnection(flags['api-version']);
-    const result = await connection.query<{ Name: string; Id: string }>(
-      `SELECT Id, Name FROM Product2 WHERE UsedFor = 'ServiceProcess' ORDER BY Name LIMIT ${limit}`
+
+    const count = await connection.query<{ count: number }>(
+      "SELECT COUNT() FROM Product2 WHERE UsedFor = 'ServiceProcess'"
     );
+
+    const result = await connection.query<{ Name: string; Id: string; Description?: string }>(
+      `SELECT Id, Name, Description FROM Product2 WHERE UsedFor = 'ServiceProcess' ORDER BY Name LIMIT ${limit}`
+    );
+
     const serviceProcessList = result.records;
 
     this.table({
@@ -65,7 +79,13 @@ export default class ServiceProcessList extends SfCommand<ServiceProcessListResu
 
     this.log(`\u2714 Displayed ${result.totalSize} Service Processes\n`);
     return {
-      path: 'src/commands/service-process/list.ts',
+      serviceProcesses: serviceProcessList.map((record) => ({
+        id: record.Id,
+        name: record.Name,
+        description: record.Description ?? undefined,
+      })),
+      count: serviceProcessList.length,
+      total: count.totalSize,
     };
   }
 }
