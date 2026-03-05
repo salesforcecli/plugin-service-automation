@@ -30,6 +30,7 @@ export type ServiceProcessDetail = {
   id: string;
   name: string;
   description?: string;
+  status: string;
 };
 
 export default class ServiceProcessList extends SfCommand<ServiceProcessListResult> {
@@ -58,8 +59,8 @@ export default class ServiceProcessList extends SfCommand<ServiceProcessListResu
       "SELECT COUNT() FROM Product2 WHERE UsedFor = 'ServiceProcess'"
     );
 
-    const result = await connection.query<{ Name: string; Id: string; Description?: string }>(
-      `SELECT Id, Name, Description FROM Product2 WHERE UsedFor = 'ServiceProcess' ORDER BY Name LIMIT ${limit}`
+    const result = await connection.query<{ Name: string; Id: string; Description?: string; IsActive: boolean }>(
+      `SELECT Id, Name, Description, IsActive FROM Product2 WHERE UsedFor = 'ServiceProcess' ORDER BY Name LIMIT ${limit}`
     );
 
     const serviceProcessList = result.records;
@@ -68,6 +69,7 @@ export default class ServiceProcessList extends SfCommand<ServiceProcessListResu
       data: serviceProcessList.map((record) => ({
         'Service Process ID': record.Id,
         'Service Process Name': record.Name,
+        'Status': record.IsActive ? 'Active' : 'Inactive',
       })),
       overflow: 'wrap',
       title: 'Unified Catalog Service Process',
@@ -77,12 +79,13 @@ export default class ServiceProcessList extends SfCommand<ServiceProcessListResu
       },
     });
 
-    this.log(`\u2714 Displayed ${result.totalSize} Service Processes\n`);
+    this.log(`\u2714 Displayed ${result.totalSize} of ${count.totalSize} Service Processes\n`);
     return {
       serviceProcesses: serviceProcessList.map((record) => ({
         id: record.Id,
         name: record.Name,
         description: record.Description ?? undefined,
+        status: record.IsActive ? 'Active' : 'Inactive',
       })),
       count: serviceProcessList.length,
       total: count.totalSize,
