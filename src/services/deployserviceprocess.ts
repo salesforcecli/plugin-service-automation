@@ -37,7 +37,7 @@ import { ValidationRunner, builtInValidatorsWithMetadata } from '../validation/i
 import type { ValidationContext } from '../validation/types.js';
 import { DeploymentStages, type TreeItem } from '../utils/deploymentStages.js';
 import { RollbackStages, ROLLBACK_SECTION_HEADER } from '../utils/rollbackStages.js';
-import { isApiVersionAtLeast } from '../utils/apiVersion.js';
+import { isApiVersionAtLeast, MIN_API_VERSION_TEMPLATE_DEPLOY_SERVICE_PROCESS_NAME } from '../utils/apiVersion.js';
 import { defaults, type DeployServiceProcessDependencies } from './deployDependencies.js';
 import { CatalogItemPatcher } from './catalogItemPatch.js';
 import { RollbackService, RollbackScenario, type RollbackData } from './rollback.js';
@@ -522,10 +522,11 @@ export class DeployService {
       // eslint-disable-next-line no-param-reassign
       context.contentDocumentId = uploadResult.contentDocumentId;
 
-      // Deploy template (API 67.0+ accepts optional body with serviceProcessName from templateData.json)
+      // Deploy template (optional body with serviceProcessName when API >= MIN_API_VERSION_TEMPLATE_DEPLOY_SERVICE_PROCESS_NAME)
       const apiVersion = conn.getApiVersion();
       const templateDeployBody =
-        isApiVersionAtLeast(apiVersion, '67.0') && context.templateDataExtract?.name != null
+        isApiVersionAtLeast(apiVersion, MIN_API_VERSION_TEMPLATE_DEPLOY_SERVICE_PROCESS_NAME) &&
+        context.templateDataExtract?.name != null
           ? { serviceProcessName: context.templateDataExtract.name }
           : undefined;
       const templateDeployResponse = await deps.callTemplateDeploy(conn, context.contentDocumentId, templateDeployBody);
