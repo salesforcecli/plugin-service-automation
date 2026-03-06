@@ -51,6 +51,14 @@ export async function retrieveServiceProcessDetails(
     const serviceProcessData = await connection.requestGet<Record<string, unknown>>(url);
     return serviceProcessData;
   } catch (error) {
+    const err = error as { errorCode?: string; data?: { errorCode?: string } };
+    const errorCode = err?.errorCode ?? err?.data?.errorCode;
+    if (errorCode === 'FUNCTIONALITY_NOT_ENABLED') {
+      throw new SfError(
+        'User does not have the required permissions to use this feature. Check with your admin.',
+        'FUNCTIONALITY_NOT_ENABLED'
+      );
+    }
     throw new ServiceProcessDataRetrievalFailure(
       `Failed to retrieve service process data from the org for service process ID '${serviceProcessId}'. Please try again.`
     );
