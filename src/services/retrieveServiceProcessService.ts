@@ -74,12 +74,16 @@ export async function extractServiceProcessDependencies(
   const flowApiNames: string[] = [];
 
   if (intakeForm) {
-    const intakeFormApiName = intakeForm.apiName as string | undefined;
-    const intakeFormNamespacePrefix = intakeForm.namespacePrefix as string | undefined;
+    const intakeFormType = (intakeForm.type as string | undefined) ?? 'Flow';
+    if (intakeFormType === 'Flow') {
+      const intakeFormApiName = intakeForm.apiName as string | undefined;
+      const intakeFormNamespacePrefix = intakeForm.namespacePrefix as string | undefined;
 
-    if (intakeFormApiName && !intakeFormNamespacePrefix) {
-      flowApiNames.push(intakeFormApiName);
+      if (intakeFormApiName && !intakeFormNamespacePrefix) {
+        flowApiNames.push(intakeFormApiName);
+      }
     }
+    // Omniscript intake form is not fetched; user is notified via getRetrievingMetadataLines
   }
 
   if (fulfillmentFlow) {
@@ -120,7 +124,9 @@ function getResolvingCounts(serviceProcessData: Record<string, unknown>): {
 } {
   const preProcessors = serviceProcessData.preProcessors;
   const preprocessors = Array.isArray(preProcessors) ? preProcessors.length : 0;
-  const intakeFlow = serviceProcessData.intakeForm != null ? 1 : 0;
+  const intakeForm = serviceProcessData.intakeForm as Record<string, unknown> | undefined;
+  const intakeFormType = intakeForm != null ? (intakeForm.type as string) ?? 'Flow' : undefined;
+  const intakeFlow = intakeForm != null && intakeFormType === 'Flow' ? 1 : 0;
   const fulfillmentFlow = serviceProcessData.fulfillmentFlow != null ? 1 : 0;
   return { preprocessors, intakeFlow, fulfillmentFlow };
 }
@@ -136,10 +142,19 @@ function getRetrievingMetadataLines(
   const intakeForm = serviceProcessData.intakeForm as Record<string, unknown> | undefined;
   const fulfillmentFlow = serviceProcessData.fulfillmentFlow as Record<string, unknown> | undefined;
 
-  for (const flow of flowMetadata) {
-    if (intakeForm && flow.apiName === (intakeForm.apiName as string)) {
-      lines.push({ label: 'Intake Flow', value: flow.apiName });
+  if (intakeForm) {
+    const intakeFormType = (intakeForm.type as string | undefined) ?? 'Flow';
+    if (intakeFormType === 'Omniscript') {
+      lines.push({ label: 'Intake Form', value: 'Omniscript (skipped - not fetched)' });
+    } else {
+      const matched = flowMetadata.find((f) => f.apiName === (intakeForm.apiName as string));
+      if (matched) {
+        lines.push({ label: 'Intake Flow', value: matched.apiName });
+      }
     }
+  }
+
+  for (const flow of flowMetadata) {
     if (fulfillmentFlow && flow.apiName === (fulfillmentFlow.apiName as string)) {
       lines.push({ label: 'Fulfillment Flow', value: flow.apiName });
     }
@@ -214,9 +229,10 @@ async function generateDeploymentMetadata(
     version: '1.0',
   };
 
-  // Process intake flow
+  // Process intake flow (only when type is Flow; Omniscript is not deployed as a flow)
   const intakeForm = serviceProcessData.intakeForm as Record<string, unknown> | undefined;
-  if (intakeForm?.apiName) {
+  const intakeFormType = intakeForm != null ? (intakeForm.type as string) ?? 'Flow' : undefined;
+  if (intakeForm?.apiName && intakeFormType === 'Flow') {
     const flowType = 'regular'; // Intake flows are always regular
     const apiName = intakeForm.apiName as string;
     const namespace = (intakeForm.namespacePrefix as string | null) ?? null;
@@ -359,12 +375,12 @@ export async function retrieveServiceProcess(
   try {
     retrieveStages?.startPhase('Validating Request');
     currentPhase = 'Validating Request';
-    
+
     const effectiveVersion = request.orgMetadata.apiVersion;
     if (!isApiVersionAtLeast(effectiveVersion, MIN_SERVICE_PROCESS_API_VERSION)) {
       throw new SfError(getUnsupportedApiVersionMessage(effectiveVersion), 'UnsupportedApiVersion');
     }
-    
+
     await validateRequest(request);
     retrieveStages?.succeedPhase('Validating Request');
 
@@ -377,8 +393,7 @@ export async function retrieveServiceProcess(
     );
     const name = (serviceProcessData.name as string) ?? 'Unknown';
     const recordId = (serviceProcessData.id as string) ?? request.serviceProcessId;
-    const productCode =
-      serviceProcessData.productCode != null ? String(serviceProcessData.productCode) : undefined;
+    const productCode = serviceProcessData.productCode != null ? String(serviceProcessData.productCode) : undefined;
     retrieveStages?.setServiceProcessDetails(name, recordId, productCode);
     retrieveStages?.succeedPhase('Fetching Service Process');
 
@@ -402,12 +417,7 @@ export async function retrieveServiceProcess(
     await ensureDirectoryExists(request.outputDir);
 
     currentPhase = 'Generating consolidated package';
-    const zipFilePath = await generateZippedArtifacts(
-      request,
-      serviceProcessData,
-      serviceProcessDeps,
-      retrieveStages
-    );
+    const zipFilePath = await generateZippedArtifacts(request, serviceProcessData, serviceProcessDeps, retrieveStages);
 
     retrieveStages?.startPhase('Done');
     currentPhase = 'Done';
