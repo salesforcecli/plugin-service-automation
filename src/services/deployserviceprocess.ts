@@ -37,6 +37,7 @@ import { ValidationRunner, builtInValidatorsWithMetadata } from '../validation/i
 import type { ValidationContext } from '../validation/types.js';
 import { DeploymentStages, type TreeItem } from '../utils/deploymentStages.js';
 import { RollbackStages, ROLLBACK_SECTION_HEADER } from '../utils/rollbackStages.js';
+import { isApiVersionAtLeast } from '../utils/apiVersion.js';
 import { defaults, type DeployServiceProcessDependencies } from './deployDependencies.js';
 import { CatalogItemPatcher } from './catalogItemPatch.js';
 import { RollbackService, RollbackScenario, type RollbackData } from './rollback.js';
@@ -521,8 +522,13 @@ export class DeployService {
       // eslint-disable-next-line no-param-reassign
       context.contentDocumentId = uploadResult.contentDocumentId;
 
-      // Deploy template
-      const templateDeployResponse = await deps.callTemplateDeploy(conn, context.contentDocumentId);
+      // Deploy template (API 67.0+ accepts optional body with serviceProcessName from templateData.json)
+      const apiVersion = conn.getApiVersion();
+      const templateDeployBody =
+        isApiVersionAtLeast(apiVersion, '67.0') && context.templateDataExtract?.name != null
+          ? { serviceProcessName: context.templateDataExtract.name }
+          : undefined;
+      const templateDeployResponse = await deps.callTemplateDeploy(conn, context.contentDocumentId, templateDeployBody);
       this.logger?.debug('Template deploy response %o', templateDeployResponse);
 
       if (templateDeployResponse?.status === 'FAILURE') {
