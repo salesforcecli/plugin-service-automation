@@ -39,7 +39,8 @@ export type DeployServiceProcessDependencies = {
   uploadZip?: (conn: Connection, zipPath: string) => Promise<{ contentDocumentId: string }>;
   callTemplateDeploy?: (
     conn: Connection,
-    contentDocumentId: string
+    contentDocumentId: string,
+    body?: Record<string, unknown>
   ) => Promise<{ deploymentResult?: string; status?: string; templateId?: string }>;
   deployFlowsFn?: (
     orgOrConnection: Org | Connection,
@@ -67,10 +68,15 @@ export const defaults = {
   },
   callTemplateDeploy: async (
     conn: Connection,
-    contentDocumentId: string
+    contentDocumentId: string,
+    body?: Record<string, unknown>
   ): Promise<{ deploymentResult?: string; status?: string; templateId?: string }> => {
     const deployPath = `${CONNECT_TEMPLATE_DEPLOY_PATH_PREFIX}/${contentDocumentId}`;
-    return postConnect<{ deploymentResult?: string; status?: string; templateId?: string }>(conn, deployPath, {});
+    return postConnect<{ deploymentResult?: string; status?: string; templateId?: string }>(
+      conn,
+      deployPath,
+      body ?? {}
+    );
   },
   deployFlowsFn: (
     orgOrConnection: Org | Connection,
