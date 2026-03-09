@@ -28,6 +28,9 @@ import {
   isApiVersionAtLeast,
   getUnsupportedApiVersionMessage,
 } from '../../utils/apiVersion.js';
+import { formatSuccessJsonOutput, formatFailureJsonOutput } from '../../utils/deployJsonFormatter.js';
+import type { DeployJsonOutput } from '../../types/jsonOutput.js';
+import type { DeploymentContext } from '../../services/deploymentContext.js';
 
 Messages.importMessagesDirectoryFromMetaUrl(import.meta.url);
 const messages = Messages.loadMessages('@salesforce/plugin-service-automation', 'service-process.deploy');
@@ -36,12 +39,12 @@ const messages = Messages.loadMessages('@salesforce/plugin-service-automation', 
 const RED = '\x1b[31m';
 const RESET = '\x1b[0m';
 
-export type ServiceProcessDeployResult = {
-  path: string;
-  contentDocumentId?: string;
-  /** Deployed flow id, name, and definitionId from Tooling API (when deployment succeeded). */
-  deployedFlows?: Array<{ id: string; fullName: string; definitionId?: string }>;
-};
+export type ServiceProcessDeployResult =
+  | DeployJsonOutput['result']
+  | {
+      path: string;
+      serviceProcessId?: string;
+    };
 
 export default class ServiceProcessDeploy extends SfCommand<ServiceProcessDeployResult> {
   public static readonly summary = messages.getMessage('summary');
@@ -132,25 +135,37 @@ export default class ServiceProcessDeploy extends SfCommand<ServiceProcessDeploy
       result = await deployService.deploy(inputZip);
       // deployStages.stop() is called inside deploy() for success case
     } catch (err) {
-      this.handleDeployFailure(err, deployStages, startTime, runId, inputZip, logger);
+      // Extract context from error if available (attached by DeployService)
+      const errorWithContext = err as Error & { context?: DeploymentContext };
+      return this.handleDeployFailure(
+        err,
+        deployStages,
+        startTime,
+        runId,
+        inputZip,
+        logger,
+        flags['link-intake'],
+        flags['link-fulfillment'],
+        errorWithContext.context
+      );
     }
 
     logger.info(`[${runId}] Deploy completed successfully`);
 
     // JSON mode - structured output only
     if (this.jsonEnabled()) {
-      return {
-        path: inputZip,
-        contentDocumentId: result.contentDocumentId,
-        deployedFlows: result.deployedFlows,
-      };
+      if (!result.context) {
+        // Fallback if context is missing (shouldn't happen)
+        throw new SfError('Deployment context is missing from result', 'MissingContext');
+      }
+      // SfCommand wraps with {status, result, warnings}, so return only the result property
+      return formatSuccessJsonOutput(result.context, inputZip, flags['link-intake'], flags['link-fulfillment']).result;
     }
 
     // Default mode - output is already handled by DeploymentStages
     return {
       path: inputZip,
-      contentDocumentId: result.contentDocumentId,
-      deployedFlows: result.deployedFlows,
+      serviceProcessId: result.context?.targetServiceProcessId,
     };
   }
 
@@ -167,7 +182,7 @@ export default class ServiceProcessDeploy extends SfCommand<ServiceProcessDeploy
     };
   }
 
-  /** Handle deploy failure: log, stop stages, show summary, then throw. */
+  /** Handle deploy failure: log, stop stages, show summary, then return JSON or throw. */
   // eslint-disable-next-line complexity
   private handleDeployFailure(
     err: unknown,
@@ -175,8 +190,11 @@ export default class ServiceProcessDeploy extends SfCommand<ServiceProcessDeploy
     startTime: number,
     runId: string,
     inputZip: string,
-    logger: Logger
-  ): never {
+    logger: Logger,
+    linkIntake: boolean,
+    linkFulfillment: boolean,
+    context?: DeploymentContext
+  ): ServiceProcessDeployResult {
     const deployErr = err as DeployError;
     const formattedMessage = getFormattedMessageForLog(err);
     logger.error(`[${runId}] Deploy failed [inputZip=${inputZip}]: ${formattedMessage}`);
@@ -191,6 +209,23 @@ export default class ServiceProcessDeploy extends SfCommand<ServiceProcessDeploy
       this.log('\n' + RED + header + RESET + rest);
     }
     deployStages.logSummary(this.getFailedSummary(Date.now() - startTime));
+
+    // JSON mode - return formatted JSON instead of throwing
+    if (this.jsonEnabled()) {
+      const error = err instanceof Error ? err : new Error(String(err));
+      // SfCommand wraps with {status, result, warnings}, so return only the result property
+      return formatFailureJsonOutput(
+        inputZip,
+        error,
+        linkIntake,
+        linkFulfillment,
+        context,
+        context?.rollback?.attempted,
+        context?.rollback?.succeeded
+      ).result;
+    }
+
+    // Non-JSON mode - throw errors as before
     const wasFormattedByDeploymentStages =
       (err instanceof ValidationError && Boolean(err.failures)) ||
       deployErr?.code === 'TemplateDeployFailed' ||
