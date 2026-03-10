@@ -17,6 +17,9 @@
 import { SfCommand, Flags } from '@salesforce/sf-plugins-core';
 import { Messages, SfError } from '@salesforce/core';
 import { InsufficientAccessError } from '../../errors.js';
+import { PreflightValidator } from '../../validation/PreflightValidator.js';
+import { MinApiVersionValidator } from '../../validation/validators/MinApiVersionValidator.js';
+import type { ValidationContext } from '../../validation/types.js';
 
 Messages.importMessagesDirectoryFromMetaUrl(import.meta.url);
 const messages = Messages.loadMessages('@salesforce/plugin-service-automation', 'service-process.list');
@@ -55,6 +58,17 @@ export default class ServiceProcessList extends SfCommand<ServiceProcessListResu
     const limit = flags.limit ?? DEFAULT_LIMIT;
 
     const connection = flags['target-org'].getConnection(flags['api-version']);
+
+    const minApiContext: ValidationContext = {
+      conn: connection,
+      expectedApiVersion: flags['api-version'],
+    };
+    const minApiResult = await MinApiVersionValidator.validate(minApiContext);
+    if (minApiResult.status === 'FAIL' && minApiResult.message) {
+      throw new SfError(minApiResult.message, 'UnsupportedApiVersion');
+    }
+
+    await PreflightValidator.validate(connection, flags['target-org']);
 
     try {
       const count = await connection.query<{ count: number }>(

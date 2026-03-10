@@ -69,12 +69,19 @@ describe('service-process deploy', () => {
   it('fails with clear error when input-zip has no flow files (--json)', async () => {
     const { zipPath, cleanup } = await createZipWithNoFlows();
     try {
-      await ServiceProcessDeploy.run(['--target-org', 'test@org.com', '--input-zip', zipPath, '--json']);
-      expect.fail('Expected command to throw');
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      // Now expects service-process.metadata.json error since we check for it first
-      expect(message).to.include('service-process.metadata.json not found');
+      const result = await ServiceProcessDeploy.run(['--target-org', 'test@org.com', '--input-zip', zipPath, '--json']);
+      // Command returns the result object (SfCommand wraps it with status/warnings)
+      expect(result).to.have.property('package');
+      expect(result).to.have.property('options');
+      expect((result as { options: { linkIntake: boolean; linkFulfillment: boolean } }).options).to.deep.equal({
+        linkIntake: false,
+        linkFulfillment: false,
+      });
+      expect(result).to.have.property('serviceProcess', null);
+      expect(result).to.have.property('errors');
+      expect((result as { errors: Array<{ message: string }> }).errors).to.be.an('array');
+      const errors = (result as { errors: Array<{ message: string }> }).errors;
+      expect(errors[0].message).to.include('service-process.metadata.json not found');
     } finally {
       cleanup();
     }

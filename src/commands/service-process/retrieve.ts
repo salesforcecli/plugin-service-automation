@@ -25,6 +25,7 @@ import {
   getUnsupportedApiVersionMessage,
 } from '../../utils/apiVersion.js';
 import { RetrieveStages } from '../../utils/retrieveStages.js';
+import { PreflightValidator } from '../../validation/PreflightValidator.js';
 
 Messages.importMessagesDirectoryFromMetaUrl(import.meta.url);
 const messages = Messages.loadMessages('@salesforce/plugin-service-automation', 'service-process.retrieve');
@@ -86,6 +87,8 @@ export default class ServiceProcessRetrieve extends SfCommand<ServiceProcessRetr
       );
     }
 
+    const connection = flags['target-org'].getConnection(flags['api-version']);
+    await PreflightValidator.validate(connection, flags['target-org']);
     const orgUrl = request.connection.instanceUrl;
     const retrieveStages = new RetrieveStages(this, 'Service Process Retrieval', orgUrl);
     retrieveStages.start();

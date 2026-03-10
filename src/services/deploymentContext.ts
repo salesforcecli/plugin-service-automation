@@ -53,6 +53,8 @@ export type DeploymentContext = {
   rollback: {
     needed: boolean;
     scenario?: RollbackScenario;
+    attempted?: boolean;
+    succeeded?: boolean;
   };
 
   // Cleanup functions
