@@ -51,6 +51,8 @@ export type DeployServiceProcessResult = {
   deployedFlowNames?: DeployedFlowNames;
   /** Deployed flow ids and names (only when deployment was not checkOnly). */
   deployedFlows?: DeployedFlowInfo[];
+  /** Deployment context (for JSON output formatting) */
+  context?: DeploymentContext;
 };
 
 export type DeployServiceOptions = {
@@ -192,6 +194,8 @@ export class DeployService {
         // Phase 5: Handle rollback if flow deployment/linking fails
         this.logger?.error('Deploy phase failed, starting rollback: %s', (error as Error).message);
         await this.handleRollback(context, error as Error);
+        // Attach context to error for JSON formatting
+        (error as Error & { context?: DeploymentContext }).context = context;
         throw error;
       }
 
@@ -220,7 +224,12 @@ export class DeployService {
         contentDocumentId: context.contentDocumentId,
         deployedFlowNames: context.deployedFlowNames,
         deployedFlows: context.deployedFlows,
+        context,
       };
+    } catch (error) {
+      // Attach context to any error thrown during preparation or validation
+      (error as Error & { context?: DeploymentContext }).context = context;
+      throw error;
     } finally {
       context.cleanup();
     }
@@ -754,6 +763,10 @@ export class DeployService {
       return;
     }
 
+    // Mark rollback as attempted
+    // eslint-disable-next-line no-param-reassign
+    context.rollback.attempted = true;
+
     // Clear deploy tree so "Service Process Created" is not shown when command's catch calls deployStages.stop()
     this.deployStages?.clearTreeStructure();
 
@@ -787,8 +800,12 @@ export class DeployService {
 
       const duration = Date.now() - rollbackStartTime;
       rollbackStages.finish(duration);
+      // eslint-disable-next-line no-param-reassign
+      context.rollback.succeeded = true;
     } catch (rollbackError) {
       rollbackFailed = true;
+      // eslint-disable-next-line no-param-reassign
+      context.rollback.succeeded = false;
       this.logger?.error('Rollback step failed: %s', (rollbackError as Error).message);
       rollbackStages.fail(rollbackError as Error);
       // Don't re-throw: original error is more important
