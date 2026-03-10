@@ -38,8 +38,12 @@ describe('service-process retrieve', () => {
       '--target-org',
       'test@org.com',
     ]);
-    // Verify the command returns a result
-    expect(result).to.have.property('path');
+    expect(result).to.have.property('success', true);
+    expect(result).to.have.property('serviceProcess');
+    expect(result.serviceProcess).to.have.property('id');
+    expect(result.serviceProcess).to.have.property('name');
+    expect(result).to.have.property('zipFilePath').that.is.a('string');
+    expect(result).to.have.property('files').that.is.an('array');
   });
 
   it('runs retrieve command with --json', async () => {
@@ -50,7 +54,13 @@ describe('service-process retrieve', () => {
       'test@org.com',
       '--json',
     ]);
-    expect(result).to.have.property('path');
-    expect(result.path).to.be.a('string');
+    expect(result).to.have.property('success', true);
+    expect(result).to.have.property('serviceProcess');
+    expect(result.serviceProcess).to.have.keys('id', 'name');
+    expect(result).to.have.property('zipFilePath').that.is.a('string');
+    expect(result).to.have.property('files').that.is.an('array');
+    expect(result.files[0]).to.have.property('name');
+    expect(result.files[0]).to.have.property('type');
+    expect(result.files[0]).to.have.property('filePath');
   });
 });

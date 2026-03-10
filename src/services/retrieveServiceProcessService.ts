@@ -361,8 +361,72 @@ export async function generateZippedArtifacts(
   return zipFilePath;
 }
 
+/**
+ * Single file entry in the retrieve result.
+ */
+export type RetrieveResultFile = {
+  name: string;
+  type: 'ServiceProcessDetails' | 'ServiceProcessMetadata' | 'Flow';
+  filePath: string;
+};
+
+/**
+ * Result payload for --json output.
+ */
+export type RetrieveResult = {
+  success: boolean;
+  serviceProcess: { id: string; name: string };
+  zipFilePath: string;
+  files: RetrieveResultFile[];
+};
+
+/**
+ * Build the structured result for --json output.
+ */
+function buildRetrieveResult(
+  request: ServiceProcessRetrieveRequest,
+  serviceProcessData: Record<string, unknown>,
+  flowMetadata: Array<{ apiName: string }>,
+  zipFilePath: string
+): RetrieveResult {
+  const serviceProcessName = (serviceProcessData.name as string) ?? 'Unknown';
+  const serviceProcessId = (serviceProcessData.id as string) ?? request.serviceProcessId;
+  const files: RetrieveResultFile[] = [];
+
+  // Service Process details (templateData.json)
+  files.push({
+    name: serviceProcessName,
+    type: 'ServiceProcessDetails',
+    filePath: 'templateData.json',
+  });
+
+  // Service Process metadata
+  files.push({
+    name: 'Service Process Metadata',
+    type: 'ServiceProcessMetadata',
+    filePath: 'service-process.metadata.json',
+  });
+
+  // Flow entries
+  for (const flow of flowMetadata) {
+    files.push({
+      name: flow.apiName,
+      type: 'Flow',
+      filePath: `metadata/flows/${flow.apiName}.flow-meta.xml`,
+    });
+  }
+
+  return {
+    success: true,
+    serviceProcess: { id: serviceProcessId, name: serviceProcessName },
+    zipFilePath,
+    files,
+  };
+}
+
 export type RetrieveServiceProcessResult = {
   zipFilePath: string;
+  result: RetrieveResult;
 };
 
 type RetrievePhase =
@@ -432,7 +496,8 @@ export async function retrieveServiceProcess(
     retrieveStages?.succeedPhase('Done');
     retrieveStages?.stop();
 
-    return { zipFilePath };
+    const result = buildRetrieveResult(request, serviceProcessData, flowMetadata, zipFilePath);
+    return { zipFilePath, result };
   } catch (error) {
     retrieveStages?.failPhase(currentPhase, error instanceof Error ? error : new Error(String(error)));
     throw error;
