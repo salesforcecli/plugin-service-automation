@@ -38,6 +38,30 @@ import {
   ensureDirectoryExists,
 } from './fileSystemService.js';
 
+const SUPPORTED_SERVICE_PROCESS_ELEMENTS = new Set([
+  'name',
+  'description',
+  'usedFor',
+  'targetObject',
+  'isActive',
+  'displayUrl',
+  'sections',
+  'contextDefinitionDevNameOrId',
+  'intakeForm',
+  'fulfillmentFlow',
+  'preProcessors',
+]);
+
+function filteredServiceProcessData(serviceProcessData: Record<string, unknown>): Record<string, unknown> {
+  const filtered: Record<string, unknown> = {};
+  for (const key of Object.keys(serviceProcessData)) {
+    if (SUPPORTED_SERVICE_PROCESS_ELEMENTS.has(key)) {
+      filtered[key] = serviceProcessData[key];
+    }
+  }
+  return filtered;
+}
+
 export async function retrieveServiceProcessDetails(
   serviceProcessId: string,
   connection: Connection,
@@ -49,7 +73,7 @@ export async function retrieveServiceProcessDetails(
 
   try {
     const serviceProcessData = await connection.requestGet<Record<string, unknown>>(url);
-    return serviceProcessData;
+    return filteredServiceProcessData(serviceProcessData);
   } catch (error) {
     const err = error as { errorCode?: string; data?: { errorCode?: string } };
     const errorCode = err?.errorCode ?? err?.data?.errorCode;
