@@ -15,8 +15,9 @@
  */
 
 import { SfCommand, Flags } from '@salesforce/sf-plugins-core';
-import { Connection, Messages, Org, SfError } from '@salesforce/core';
+import { Messages, SfError } from '@salesforce/core';
 import { InsufficientAccessError } from '../../errors.js';
+import { PreflightValidator } from '../../validation/PreflightValidator.js';
 
 Messages.importMessagesDirectoryFromMetaUrl(import.meta.url);
 const messages = Messages.loadMessages('@salesforce/plugin-service-automation', 'service-process.list');
@@ -48,65 +49,6 @@ export default class ServiceProcessList extends SfCommand<ServiceProcessListResu
     }),
   };
 
-  private static async checkAccess(connection: Connection, org: Org): Promise<void> {
-    const QUERY1 =
-      "SELECT Id, Name FROM PermissionSet WHERE Name='UnifiedCatalogAdminPsl' OR Name='UnifiedCatalogAdmin'";
-
-    let permissionSetResult: { records: Array<{ Id: string }> };
-    try {
-      permissionSetResult = await connection.query<{ Id: string; Name: string }>(QUERY1);
-    } catch (error) {
-      throw new SfError(
-        'Something went wrong while checking org access. Please try again.',
-        'OrgAccessCheckFailure',
-        undefined,
-        error instanceof Error ? error : new Error(String(error))
-      );
-    }
-
-    if (!permissionSetResult.records || permissionSetResult.records.length === 0) {
-      throw new InsufficientAccessError('UnifiedCatalogAddOn is missing. Check with your admin.');
-    }
-
-    const username = org.getUsername();
-    const userQuery = `SELECT Id FROM User WHERE Username = '${String(username).replace(/'/g, "''")}' LIMIT 1`;
-    let userResult: { records: Array<{ Id: string }> };
-    try {
-      userResult = await connection.query<{ Id: string }>(userQuery);
-    } catch (error) {
-      throw new SfError(
-        'Something went wrong while checking user access. Please try again.',
-        'UserAccessCheckFailure',
-        undefined,
-        error instanceof Error ? error : new Error(String(error))
-      );
-    }
-
-    if (!userResult.records?.length) {
-      throw new InsufficientAccessError('Permission Set is missing on the context user. Check with your admin.');
-    }
-    const userId = userResult.records[0].Id;
-
-    const permissionSetIds = permissionSetResult.records.map((r) => `'${r.Id}'`).join(', ');
-    const QUERY2 = `SELECT Id, AssigneeId FROM PermissionSetAssignment WHERE PermissionSetId IN (${permissionSetIds}) AND AssigneeId = '${userId}'`;
-
-    let assignmentResult: { records: unknown[] };
-    try {
-      assignmentResult = await connection.query<{ Id: string; AssigneeId: string }>(QUERY2);
-    } catch (error) {
-      throw new SfError(
-        'Something went wrong while checking user access. Please try again.',
-        'UserAccessCheckFailure',
-        undefined,
-        error instanceof Error ? error : new Error(String(error))
-      );
-    }
-
-    if (!assignmentResult.records || assignmentResult.records.length === 0) {
-      throw new InsufficientAccessError('Permission Set is missing on the context user. Check with your admin.');
-    }
-  }
-
   public async run(): Promise<ServiceProcessListResult> {
     const { flags } = await this.parse(ServiceProcessList);
 
@@ -115,7 +57,7 @@ export default class ServiceProcessList extends SfCommand<ServiceProcessListResu
 
     const connection = flags['target-org'].getConnection(flags['api-version']);
 
-    await ServiceProcessList.checkAccess(connection, flags['target-org']);
+    await PreflightValidator.validate(connection, flags['target-org']);
 
     try {
       const count = await connection.query<{ count: number }>(
