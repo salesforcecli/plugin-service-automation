@@ -82,7 +82,7 @@ export class FlowTransformer {
       attributeNamePrefix: '@_', // Default prefix for attributes
       textNodeName: '#text', // Default text node name
     });
-    const output = builder.build(parsed as Record<string, unknown>);
+    const output = String(builder.build(parsed as Record<string, unknown>));
     fs.writeFileSync(absolutePath, output, 'utf-8');
 
     logger?.debug('Updated intake form flow for targetServiceProcessId=%s', targetServiceProcessId);
@@ -153,7 +153,7 @@ export class FlowTransformer {
       attributeNamePrefix: '@_', // Default prefix for attributes
       textNodeName: '#text', // Default text node name
     });
-    const output = builder.build(parsed as Record<string, unknown>);
+    const output = String(builder.build(parsed as Record<string, unknown>));
     fs.writeFileSync(absolutePath, output, 'utf-8');
 
     logger?.debug('Set fulfillment flow status to Draft (ready for deployment).');
@@ -196,7 +196,7 @@ export class FlowTransformer {
       attributeNamePrefix: '@_',
       textNodeName: '#text',
     });
-    const output = builder.build(parsed as Record<string, unknown>);
+    const output = String(builder.build(parsed as Record<string, unknown>));
     fs.writeFileSync(absolutePath, output, 'utf-8');
   }
 
