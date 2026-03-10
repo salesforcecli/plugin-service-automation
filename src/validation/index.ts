@@ -15,6 +15,7 @@
  */
 
 export type { ValidationResult, ValidationContext, CustomFieldRef, Validator, Logger, LogJsonFn } from './types.js';
+export { PreflightValidator } from './PreflightValidator.js';
 export { ValidationRunner } from './ValidationRunner.js';
 export type { RunValidationsResult } from './ValidationRunner.js';
 export {
