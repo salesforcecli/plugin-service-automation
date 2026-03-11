@@ -49,7 +49,7 @@ export class OrgApiVersionValidator {
         return Promise.resolve({
           name: NAME,
           status: 'FAIL',
-          message: `service-process.metadata.json API version mismatch: file has ${ctx.metadataApiVersion}, expected ${referenceVersion}${suffix}`,
+          message: `service-process.metadata.json API version mismatch: package was created on ${ctx.metadataApiVersion}, but the connected org is using API version ${referenceVersion}${suffix}`,
         });
       }
       return Promise.resolve({

@@ -34,7 +34,8 @@ export class CatalogItemPatcher {
     intakeFormDefinitionId: string | undefined,
     fulfillmentFlowDefinitionId: string | undefined,
     existingIntakeFormId: string | undefined,
-    contextDefinitionDevNameOrId: string | undefined
+    contextDefinitionDevNameOrId: string | undefined,
+    serviceProcessName?: string
   ): Record<string, unknown> {
     const intakeForm =
       intakeFormDefinitionId != null
@@ -59,7 +60,7 @@ export class CatalogItemPatcher {
       intakeForm,
       integrations: [],
       isActive: false,
-      name: '',
+      name: serviceProcessName ?? '',
       preProcessors: [],
       productRequests: [],
       targetObject: 'Case',
@@ -79,6 +80,7 @@ export class CatalogItemPatcher {
     targetServiceProcessId: string,
     deployedFlows: DeployedFlowInfo[],
     deployedFlowNames: DeployedFlowNames | undefined,
+    serviceProcessName: string | undefined,
     logger?: Logger
   ): Promise<void> {
     const fullNameToDefId = new Map(
@@ -110,7 +112,8 @@ export class CatalogItemPatcher {
       intakeFormDefinitionId,
       fulfillmentFlowDefinitionId,
       existingIntakeFormId,
-      contextDefinitionDevNameOrId
+      contextDefinitionDevNameOrId,
+      serviceProcessName
     );
 
     logger?.info('Patching catalog item: %s', catalogItemPath);
