@@ -21,6 +21,7 @@ import { Connection } from '@salesforce/core';
 import { expect } from 'chai';
 import { stubSfCommandUx } from '@salesforce/sf-plugins-core';
 import JSZip from 'jszip';
+import { PreflightValidator } from '../../../src/validation/PreflightValidator.js';
 import ServiceProcessDeploy from '../../../src/commands/service-process/deploy.js';
 
 describe('service-process deploy', () => {
@@ -29,6 +30,7 @@ describe('service-process deploy', () => {
   beforeEach(() => {
     stubSfCommandUx($$.SANDBOX);
     $$.SANDBOX.stub(Connection.prototype, 'getApiVersion').returns('66.0');
+    $$.SANDBOX.stub(PreflightValidator, 'validate').resolves();
   });
 
   afterEach(() => {

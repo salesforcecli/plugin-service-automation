@@ -275,7 +275,6 @@ export class DeployService {
     workspace: string,
     targetServiceProcessId: string | undefined,
     deployedFlowNames: DeployedFlowNames | undefined,
-    templateDataExtract: { name?: string },
     deploymentMetadata: DeploymentMetadata | undefined
   ): Promise<void> {
     // Check if intake flow should be deployed (not linked)
@@ -296,7 +295,7 @@ export class DeployService {
       targetServiceProcessId
     );
     const transformResult = await Promise.resolve(
-      this.deps.flowTransformer(intakeFormFlowPath, targetServiceProcessId, templateDataExtract.name, this.logger)
+      this.deps.flowTransformer(intakeFormFlowPath, targetServiceProcessId, this.logger)
     );
     if (transformResult.modified) {
       this.logger?.debug('Flow transformer: %s', transformResult.message);
@@ -536,8 +535,8 @@ export class DeployService {
       const templateDeployBody =
         isApiVersionAtLeast(apiVersion, MIN_API_VERSION_TEMPLATE_DEPLOY_SERVICE_PROCESS_NAME) &&
         context.templateDataExtract?.name != null
-          ? { serviceProcessName: context.templateDataExtract.name }
-          : undefined;
+          ? { serviceProcessName: context.templateDataExtract.name, deploymentMode: 'Async' }
+          : { deploymentMode: 'Async' };
       const templateDeployResponse = await deps.callTemplateDeploy(conn, context.contentDocumentId, templateDeployBody);
       this.logger?.debug('Template deploy response %o', templateDeployResponse);
 
@@ -655,7 +654,6 @@ export class DeployService {
         context.workspace,
         context.targetServiceProcessId,
         context.deployedFlowNames,
-        context.templateDataExtract,
         context.deploymentMetadata
       );
 
@@ -669,7 +667,11 @@ export class DeployService {
           flowDir,
           context.deployedFlowNames.fulfillmentFlow.originalName
         );
-        const fulfillmentResult = FlowTransformer.transformFulfillmentFlow(fulfillmentFlowPath, this.logger);
+        const fulfillmentResult = FlowTransformer.transformFulfillmentFlow(
+          fulfillmentFlowPath,
+          context.targetServiceProcessId,
+          this.logger
+        );
         if (fulfillmentResult.modified) {
           this.logger?.debug('Flow transformer: %s', fulfillmentResult.message);
         }
@@ -738,6 +740,7 @@ export class DeployService {
           context.targetServiceProcessId,
           context.deployedFlows,
           context.deployedFlowNames,
+          context.templateDataExtract?.name,
           this.logger
         );
       }

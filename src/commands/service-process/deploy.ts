@@ -31,6 +31,7 @@ import {
 import { formatSuccessJsonOutput, formatFailureJsonOutput } from '../../utils/deployJsonFormatter.js';
 import type { DeployJsonOutput } from '../../types/jsonOutput.js';
 import type { DeploymentContext } from '../../services/deploymentContext.js';
+import { PreflightValidator } from '../../validation/PreflightValidator.js';
 
 Messages.importMessagesDirectoryFromMetaUrl(import.meta.url);
 const messages = Messages.loadMessages('@salesforce/plugin-service-automation', 'service-process.deploy');
@@ -108,6 +109,8 @@ export default class ServiceProcessDeploy extends SfCommand<ServiceProcessDeploy
         'UnsupportedApiVersion'
       );
     }
+
+    await PreflightValidator.validate(connection, flags['target-org']);
 
     const logger = await Logger.child('service-process-deploy');
     const runId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
