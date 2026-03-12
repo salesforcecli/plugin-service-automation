@@ -1,25 +1,26 @@
 # summary
 
-The service-process list command allows users to view Unified Catalog
-Service Processes available in a Salesforce org.
+List Unified Catalog Service Processes available in a Salesforce org.
 
 # description
 
-The command connects to the specifiedorg, retrieves Service Process
-records in batches, and displays their Name and Id in a human-readable
-table. To ensure predictable performance and prevent excessively
-large output, the command enforces a maximum retrieval limit.
-If the limit is reached, the output is truncated and a warning is
-displayed Users can explicitly control the number of results returned
-using the --limit flag.
+Lists Unified Catalog Service Process records from the specified org and displays their **Name** and **Id** in a human-readable table.
+
+To ensure predictable performance and avoid excessively large output, the command limits the number of records returned. If the maximum limit is reached, the results are truncated and a warning is displayed.
+
+Use the `--limit` flag to control the maximum number of Service Processes returned.
 
 # flags.limit.summary
 
 Maximum number of Service Processes to return.
 
+# flags.limit.description
+
+Specifies the maximum number of Service Process records returned by the command. If not provided, the command uses a default limit.
+
 # examples
 
-- List Service Processes using default limits:
+- List Service Processes using the default limit:
 
   <%= config.bin %> <%= command.id %> -o devSandbox
 

@@ -1,42 +1,51 @@
 # summary
 
-Deploys a Unified Catalog Service Process into a Salesforce org.
+Deploy a Unified Catalog Service Process into a Salesforce org.
 
 # description
 
-This command assumes that all prerequisite metadata required by the
-Service Process (such as Apex classes, custom objects, and other
-non-supported dependencies) already exist in the org.
+Deploys a Service Process packaged as a zip file (typically produced by the
+`service-process retrieve` command) into a target Salesforce org.
 
-The command does not create missing prerequisites. Deployment failures
-caused by missing dependencies are surfaced. Supported metadata is
-Service Process Attributes, Intake flow, Fulfillment flow, Preprocessor.
+The command deploys supported Service Process metadata, including:
 
-Use SF_LOG_LEVEL=debug for detailed logs in the log file, or DEBUG=sf:service-process-deploy for terminal output. The CLI supports --loglevel globally. Logs are written to ~/.sf/sf-YYYY-MM-DD.log.
+- Service Process Attributes (anchor, custom, context)
+- Intake flow
+- Fulfillment flow
+- Preprocessor reference
+
+All other dependencies must already exist in the target org. For example:
+
+- Apex classes used in flows
+- Apex classes referenced by the preprocessor
+- Unified Catalog context definition whitelisting
+
+If any required dependency is missing, the deployment fails.
 
 # flags.input-zip.summary
 
-Path to a zip file containing metadata for deployment.
+Path to the zip file containing the Service Process metadata to deploy.
 
 # flags.input-zip.description
 
-Path to a zip file containing metadata for deployment.
+Path to the zip file produced by `service-process retrieve` that contains the Service Process definition and supported metadata.
 
 # flags.link-intake.summary
 
-Links existing intake artifact (flow).
+Link an existing intake flow instead of deploying a new one.
 
 # flags.link-intake.description
 
-When set, updates deployment-metadata.json for the intake flow: sets deploymentIntent to "link" and namespace to the target org's namespace. Applied during preparation, before validations. Currently only flow is supported.
+When specified, the command links the existing intake flow in the target org instead of deploying the intake flow from the zip file.
 
 # flags.link-fulfillment.summary
 
-Links existing fulfillment artifact (flow, flow orchestrator).
+Link an existing fulfillment artifact instead of deploying one.
 
 # flags.link-fulfillment.description
 
-When set, updates deployment-metadata.json for the fulfillment flow: sets deploymentIntent to "link" and namespace to the target org's namespace. Applied during preparation, before validations. Currently supports flow and flow orchestrator.
+When specified, the command links an existing fulfillment artifact(flow or flow orchestrator) in the target org instead of deploying
+the fulfillment flow from the zip file.
 
 # examples
 
@@ -44,8 +53,18 @@ When set, updates deployment-metadata.json for the fulfillment flow: sets deploy
 
   <%= config.bin %> <%= command.id %> -z ./service-process.zip -o prod
 
-- Deploy with detailed debug logs:
+- Deploy while linking an existing intake flow:
+
+  <%= config.bin %> <%= command.id %> -z ./service-process.zip -o prod --link-intake
+
+- Deploy while linking existing intake and fulfillment artifacts:
+
+  <%= config.bin %> <%= command.id %> -z ./service-process.zip -o prod --link-intake --link-fulfillment
+
+- Run with debug logging written to the Salesforce CLI log file:
 
   SF_LOG_LEVEL=debug <%= config.bin %> <%= command.id %> -z ./service-process.zip -o prod
+
+- Enable terminal debug output (if debug namespaces are enabled):
 
   DEBUG=sf:service-process-deploy <%= config.bin %> <%= command.id %> -z ./service-process.zip -o prod
