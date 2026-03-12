@@ -17,7 +17,7 @@
 import { resolve } from 'node:path';
 import { SfCommand, Flags } from '@salesforce/sf-plugins-core';
 import { Messages, Org, SfError } from '@salesforce/core';
-import { retrieveServiceProcess } from '../../services/retrieveServiceProcessService.js';
+import { retrieveServiceProcess, type RetrieveResult } from '../../services/retrieveServiceProcessService.js';
 import { ServiceProcessRetrieveRequest, OrgMetadata } from '../../types/types.js';
 import {
   MIN_SERVICE_PROCESS_API_VERSION,
@@ -25,13 +25,13 @@ import {
   getUnsupportedApiVersionMessage,
 } from '../../utils/apiVersion.js';
 import { RetrieveStages } from '../../utils/retrieveStages.js';
+import { PreflightValidator } from '../../validation/PreflightValidator.js';
 
 Messages.importMessagesDirectoryFromMetaUrl(import.meta.url);
 const messages = Messages.loadMessages('@salesforce/plugin-service-automation', 'service-process.retrieve');
 
-export type ServiceProcessRetrieveResult = {
-  path: string;
-};
+/** JSON output shape. */
+export type ServiceProcessRetrieveResult = RetrieveResult;
 
 export default class ServiceProcessRetrieve extends SfCommand<ServiceProcessRetrieveResult> {
   public static readonly summary = messages.getMessage('summary');
@@ -79,14 +79,16 @@ export default class ServiceProcessRetrieve extends SfCommand<ServiceProcessRetr
   public async run(): Promise<ServiceProcessRetrieveResult> {
     const { flags } = await this.parse(ServiceProcessRetrieve);
     const request: ServiceProcessRetrieveRequest = ServiceProcessRetrieve.serviceProcessRetrieveRequest(flags);
-    
+
     if (!isApiVersionAtLeast(request.orgMetadata.apiVersion, MIN_SERVICE_PROCESS_API_VERSION)) {
       throw new SfError(
         getUnsupportedApiVersionMessage(request.orgMetadata.apiVersion, Boolean(flags['api-version'])),
         'UnsupportedApiVersion'
       );
     }
-    
+
+    const connection = flags['target-org'].getConnection(flags['api-version']);
+    await PreflightValidator.validate(connection, flags['target-org']);
     const orgUrl = request.connection.instanceUrl;
     const retrieveStages = new RetrieveStages(this, 'Service Process Retrieval', orgUrl);
     retrieveStages.start();
@@ -100,10 +102,6 @@ export default class ServiceProcessRetrieve extends SfCommand<ServiceProcessRetr
       }
       throw error;
     }
-
-    if (this.jsonEnabled()) {
-      return { path: result.zipFilePath };
-    }
-    return { path: result.zipFilePath };
+    return result.result;
   }
 }
