@@ -4,7 +4,9 @@ Retrieve a Unified Catalog Service Process from a Salesforce org.
 
 # description
 
-Retrieves a Unified Catalog Service Process from the specified Salesforce org and packages it into a zip file for deployment to another org.
+A Unified Catalog Service Process defines a service automation workflow consisting of attributes, intake flows, fulfillment flows, and preprocessors.
+
+Use this command to retrieve a Unified Catalog Service Process from the specified Salesforce org and packages it into a zip file for deployment to another org.
 
 The command downloads the Service Process definition, identifies supported dependent metadata, retrieves those components, and bundles everything into a deployable artifact.
 

@@ -4,8 +4,9 @@ Deploy a Unified Catalog Service Process into a Salesforce org.
 
 # description
 
-Deploys a Service Process packaged as a zip file (typically produced by the
-`service-process retrieve` command) into a target Salesforce org.
+A Unified Catalog Service Process defines a service automation workflow consisting of attributes, intake flows, fulfillment flows, and preprocessors.
+
+Use this command to deploy a Service Process packaged as a zip file (typically produced by the `service-process retrieve` command) into a target Salesforce org.
 
 The command deploys supported Service Process metadata, including:
 
