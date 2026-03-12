@@ -33,7 +33,6 @@ export type DeployServiceProcessDependencies = {
   flowTransformer?: (
     flowFilePath: string,
     targetServiceProcessId: string,
-    serviceProcessName?: string,
     logger?: Logger
   ) => FlowTransformerResult | Promise<FlowTransformerResult>;
   uploadZip?: (conn: Connection, zipPath: string) => Promise<{ contentDocumentId: string }>;
@@ -58,10 +57,9 @@ export const defaults = {
   flowTransformer: (
     flowFilePath: string,
     targetServiceProcessId: string,
-    serviceProcessName?: string,
     logger?: Logger
   ): FlowTransformerResult | Promise<FlowTransformerResult> =>
-    FlowTransformer.transformIntakeFormFlow(flowFilePath, targetServiceProcessId, serviceProcessName, logger),
+    FlowTransformer.transformIntakeFormFlow(flowFilePath, targetServiceProcessId, logger),
   uploadZip: async (conn: Connection, zipPath: string): Promise<{ contentDocumentId: string }> => {
     const r = await createContentDocumentFromFile(conn, zipPath);
     return { contentDocumentId: r.contentDocumentId };
