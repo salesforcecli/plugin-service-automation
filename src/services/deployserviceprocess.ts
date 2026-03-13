@@ -20,7 +20,7 @@ import type { Connection, Org } from '@salesforce/core';
 import type { Logger } from '@salesforce/core';
 import type { SfCommand } from '@salesforce/sf-plugins-core';
 import { METADATA_FLOWS_RELATIVE_PATH } from '../constants.js';
-import { DeployError, MissingMetadataFileError, TemplateDataError } from '../errors.js';
+import { DeployError, MissingMetadataFileError, TemplateDataError, ValidationError } from '../errors.js';
 import { type DeployedFlowInfo } from '../utils/flow/deployflow.js';
 import { getFlowDefinitionIds, getOrgNamespace } from '../utils/flow/flowMetadata.js';
 import { DeployWorkspace } from '../workspace/deployWorkspace.js';
@@ -311,6 +311,7 @@ export class DeployService {
 
     // Extract workspace
     const { workspace, cleanup: cleanupWorkspace } = await DeployWorkspace.extractZipToWorkspace(inputZip);
+    this.logger?.debug('Workspace extracted to %s', workspace);
 
     // Get connection and target org namespace early so we can apply --link-intake / --link-fulfillment overrides before validations
     const connection = this.org.getConnection(this.expectedApiVersion);
@@ -343,6 +344,12 @@ export class DeployService {
       await writeServiceProcessMetadata(workspace, serviceProcessMetadata);
     }
 
+    this.logger?.debug(
+      'Deployment metadata: intake=%s, fulfillment=%s',
+      deploymentMetadata.intakeFlow?.deploymentIntent ?? 'none',
+      deploymentMetadata.fulfillmentFlow?.deploymentIntent ?? 'none'
+    );
+
     const { filePaths, templateDataExtract } = TemplateDataReader.deriveFlowsAndTemplateData(workspace);
 
     // Check if any flows need deployment (vs linking to existing flows)
@@ -366,6 +373,8 @@ export class DeployService {
     // Phase 1: Set flows to Draft BEFORE validators run
     // This ensures validators check Draft flows instead of Active flows with runtime errors
     FlowTransformer.setFlowsToDraft(workspace, deploymentMetadata);
+
+    this.logger?.debug('Prepare complete: %d flow file(s) to deploy', filePaths.length);
 
     // Create and return deployment context
     return createDeploymentContext({
@@ -486,9 +495,13 @@ export class DeployService {
       // Success - substages remain visible showing which validators ran
       this.deployStages?.succeedPhase('Validating deployment');
 
+      this.logger?.info('Validation completed in %dms', Date.now() - phaseStart);
       context.recordPhaseTime('validation', Date.now() - phaseStart);
     } catch (error) {
       this.logger?.error(`Validation failed: ${error instanceof Error ? error.message : String(error)}`);
+      if (error instanceof ValidationError && error.failures?.length) {
+        this.logger?.debug('Validation failed validators: %s', error.failures.map((f) => f.name).join(', '));
+      }
       this.deployStages?.failPhase('Validating deployment', error as Error);
       throw error;
     }
@@ -625,6 +638,7 @@ export class DeployService {
         }
       }
 
+      this.logger?.info('Service Process creation completed in %dms', Date.now() - phaseStart);
       context.recordPhaseTime('createServiceProcess', Date.now() - phaseStart);
     } catch (error) {
       this.logger?.error('Service Process creation failed: %s', error instanceof Error ? error.message : String(error));
@@ -686,8 +700,16 @@ export class DeployService {
 
       if (context.deployedFlows.length === 0) {
         this.deployStages?.succeedPhase('Deploying metadata');
+        this.logger?.info('Metadata deploy completed in %dms (no flows deployed)', Date.now() - deployStart);
+        context.recordPhaseTime('deployMetadata', Date.now() - deployStart);
         return;
       }
+
+      this.logger?.info(
+        'Deployed %d flow(s): %s',
+        context.deployedFlows.length,
+        context.deployedFlows.map((f) => f.fullName).join(', ')
+      );
 
       // Enrich with FlowDefinition IDs for catalog item linking
       // Note: Two types of IDs exist:
@@ -714,6 +736,7 @@ export class DeployService {
       context.rollback.scenario = RollbackScenario.ServiceProcessAndFlows;
 
       this.deployStages?.succeedPhase('Deploying metadata');
+      this.logger?.info('Metadata deploy completed in %dms', Date.now() - deployStart);
       context.recordPhaseTime('deployMetadata', Date.now() - deployStart);
     } catch (error) {
       this.logger?.error('Metadata deploy failed: %s', error instanceof Error ? error.message : String(error));
@@ -746,6 +769,7 @@ export class DeployService {
       }
 
       this.deployStages?.succeedPhase('Linking deployed components');
+      this.logger?.info('Linking completed in %dms', Date.now() - finalizeStart);
       context.recordPhaseTime('finalize', Date.now() - finalizeStart);
     } catch (error) {
       this.logger?.error('Linking failed: %s', error instanceof Error ? error.message : String(error));

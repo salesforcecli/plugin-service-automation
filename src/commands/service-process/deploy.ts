@@ -112,9 +112,10 @@ export default class ServiceProcessDeploy extends SfCommand<ServiceProcessDeploy
 
     await PreflightValidator.validate(connection, flags['target-org']);
 
-    const logger = await Logger.child('service-process-deploy');
     const runId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-    logger.info(`[${runId}] Deploy started: inputZip=${inputZip}`);
+    const logger = await Logger.child('service-process-deploy', { runId });
+    logger.debug('Preflight check passed');
+    logger.info('Deploy started: inputZip=%s', inputZip);
     const deployApiVersion = flags['api-version'];
     const deployStages = new DeploymentStages(
       this,
@@ -153,7 +154,7 @@ export default class ServiceProcessDeploy extends SfCommand<ServiceProcessDeploy
       );
     }
 
-    logger.info(`[${runId}] Deploy completed successfully`);
+    logger.info('Deploy completed successfully');
 
     // JSON mode - structured output only
     if (this.jsonEnabled()) {
@@ -200,8 +201,8 @@ export default class ServiceProcessDeploy extends SfCommand<ServiceProcessDeploy
   ): ServiceProcessDeployResult {
     const deployErr = err as DeployError;
     const formattedMessage = getFormattedMessageForLog(err);
-    logger.error(`[${runId}] Deploy failed [inputZip=${inputZip}]: ${formattedMessage}`);
-    logger.debug(`[${runId}] Deploy failed (raw): ${err instanceof Error ? err.message : String(err)}`);
+    logger.error('Deploy failed [inputZip=%s]: %s', inputZip, formattedMessage);
+    logger.debug('Deploy failed (raw): %s', err instanceof Error ? err.message : String(err));
     deployStages.stop();
     const isValidationFailure = err instanceof ValidationError && Boolean(err.failures?.length);
     if (isValidationFailure && !this.jsonEnabled() && err instanceof ValidationError) {

@@ -121,5 +121,11 @@ export class CatalogItemPatcher {
     const patchResponse = await patchConnect(conn, catalogItemPath, catalogItemBody);
     logger?.debug('Patch response %o', patchResponse);
     logger?.info('Catalog item patched successfully.');
+    logger?.info(
+      'Linked Service Process %s to intake %s, fulfillment %s',
+      targetServiceProcessId,
+      intakeFormDefinitionId ?? 'none',
+      fulfillmentFlowDefinitionId ?? 'none'
+    );
   }
 }
