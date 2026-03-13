@@ -58,7 +58,7 @@
     ],
     "topics": {
       "service-process": {
-        "description": "Commands to deploy, retrieve, or list Unified Catalog Service Process in an org."
+        "description": "Commands to deploy, retrieve, and list Unified Catalog Service Process in an org."
       }
     },
     "flexibleTaxonomy": true
