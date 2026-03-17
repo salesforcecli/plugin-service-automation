@@ -146,27 +146,6 @@ SF_LOG_LEVEL=debug sf service-process deploy -z ./service-process.zip -o prod
 DEBUG=sf:service-process-deploy sf service-process deploy -z ./service-process.zip -o prod
 ```
 
-## Build (Developers)
-
-```bash
-git clone git@github.com:salesforcecli/plugin-service-automation
-cd plugin-service-automation
-yarn && yarn build
-```
-
-Run commands locally:
-
-```bash
-./bin/dev service-process list -o YOUR_ORG
-```
-
-Or link the plugin and use `sf`:
-
-```bash
-sf plugins link .
-sf service-process list -o YOUR_ORG
-```
-
 ## Issues
 
 Report issues at [Salesforce CLI issues](https://github.com/forcedotcom/cli/issues).
