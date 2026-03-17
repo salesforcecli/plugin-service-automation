@@ -15,7 +15,7 @@
  */
 
 /** Minimum API version required for service-process deploy and retrieve (e.g. 66.0). */
-export const MIN_SERVICE_PROCESS_API_VERSION = '66.0';
+export const MIN_SERVICE_PROCESS_API_VERSION = '67.0';
 
 /** API version at which template deploy POST accepts optional body with serviceProcessName (from templateData.json name). */
 export const MIN_API_VERSION_TEMPLATE_DEPLOY_SERVICE_PROCESS_NAME = '67.0';
