@@ -19,7 +19,7 @@ import * as path from 'node:path';
 import type { Connection, Org } from '@salesforce/core';
 import type { Logger } from '@salesforce/core';
 import type { SfCommand } from '@salesforce/sf-plugins-core';
-import { METADATA_FLOWS_RELATIVE_PATH } from '../constants.js';
+import { CONNECT_TEMPLATE_DEPLOY_PATH_PREFIX, METADATA_FLOWS_RELATIVE_PATH } from '../constants.js';
 import { DeployError, MissingMetadataFileError, TemplateDataError, ValidationError } from '../errors.js';
 import { type DeployedFlowInfo } from '../utils/flow/deployflow.js';
 import { getFlowDefinitionIds, getOrgNamespace } from '../utils/flow/flowMetadata.js';
@@ -37,7 +37,6 @@ import { ValidationRunner, builtInValidatorsWithMetadata } from '../validation/i
 import type { ValidationContext } from '../validation/types.js';
 import { DeploymentStages, type TreeItem } from '../utils/deploymentStages.js';
 import { RollbackStages, ROLLBACK_SECTION_HEADER } from '../utils/rollbackStages.js';
-import { isApiVersionAtLeast, MIN_API_VERSION_TEMPLATE_DEPLOY_SERVICE_PROCESS_NAME } from '../utils/apiVersion.js';
 import { defaults, type DeployServiceProcessDependencies } from './deployDependencies.js';
 import { CatalogItemPatcher } from './catalogItemPatch.js';
 import { RollbackService, RollbackScenario, type RollbackData } from './rollback.js';
@@ -543,15 +542,23 @@ export class DeployService {
       // eslint-disable-next-line no-param-reassign
       context.contentDocumentId = uploadResult.contentDocumentId;
 
-      // Deploy template (optional body with serviceProcessName when API >= MIN_API_VERSION_TEMPLATE_DEPLOY_SERVICE_PROCESS_NAME)
-      const apiVersion = conn.getApiVersion();
-      const templateDeployBody =
-        isApiVersionAtLeast(apiVersion, MIN_API_VERSION_TEMPLATE_DEPLOY_SERVICE_PROCESS_NAME) &&
-        context.templateDataExtract?.name != null
-          ? { serviceProcessName: context.templateDataExtract.name, deploymentMode: 'Async' }
-          : { deploymentMode: 'Async' };
+      // Deploy template (always pass serviceProcessName from templateData when available)
+      const templateDeployBody = {
+        serviceProcessName: context.templateDataExtract?.name ?? '',
+        deploymentMode: 'CrossOrg',
+      };
+      const templateDeployEndpoint = `${CONNECT_TEMPLATE_DEPLOY_PATH_PREFIX}/${context.contentDocumentId}`;
+      this.logger?.info(
+        'Calling Service Process creation API: endpoint=%s body=%o',
+        templateDeployEndpoint,
+        templateDeployBody
+      );
       const templateDeployResponse = await deps.callTemplateDeploy(conn, context.contentDocumentId, templateDeployBody);
-      this.logger?.debug('Template deploy response %o', templateDeployResponse);
+      this.logger?.debug('Service Process creation API response (object): %o', templateDeployResponse);
+      this.logger?.debug(
+        'Service Process creation API full response (JSON): %s',
+        JSON.stringify(templateDeployResponse, null, 2)
+      );
 
       if (templateDeployResponse?.status === 'FAILURE') {
         const message =
