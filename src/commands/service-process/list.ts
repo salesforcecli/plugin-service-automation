@@ -108,9 +108,11 @@ export default class ServiceProcessList extends SfCommand<ServiceProcessListResu
       const isUsedForColumnError = errorMessage.includes("No such column 'UsedFor' on entity");
       const isProduct2NotIdentified = errorMessage.includes("sObject type 'Product2' is not supported.");
       if (isUsedForColumnError || isProduct2NotIdentified) {
-        throw new InsufficientAccessError('User does not have required permissions.');
+        throw new InsufficientAccessError(
+          'User does not have required permissions to fetch service processes. Please check with your admin.'
+        );
       }
-      throw new SfError('Something went wrong. Check with your admin.');
+      throw new SfError('Something went wrong while fetching service processes. Please try again.');
     }
   }
 }
