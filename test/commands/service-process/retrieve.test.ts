@@ -25,7 +25,7 @@ describe('service-process retrieve', () => {
 
   beforeEach(() => {
     stubSfCommandUx($$.SANDBOX);
-    $$.SANDBOX.stub(Connection.prototype, 'getApiVersion').returns('66.0');
+    $$.SANDBOX.stub(Connection.prototype, 'getApiVersion').returns('67.0');
     $$.SANDBOX.stub(PreflightValidator, 'validate').resolves();
   });
 
