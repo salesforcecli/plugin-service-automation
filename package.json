@@ -8,19 +8,21 @@
     "@oclif/core": "^4",
     "@oclif/multi-stage-output": "^0.8.28",
     "@salesforce/core": "^8.24.0",
-    "fast-xml-parser": "^4.3.2",
-    "got": "^13.0.0",
-    "jszip": "^3.10.1",
     "@salesforce/kit": "^3.2.4",
     "@salesforce/sf-plugins-core": "^12",
-    "@salesforce/source-deploy-retrieve": "^12.31.10"
+    "@salesforce/source-deploy-retrieve": "^12.31.10",
+    "fast-xml-parser": "^4.3.2",
+    "got": "^13.0.0",
+    "jszip": "^3.10.1"
   },
   "devDependencies": {
     "@oclif/plugin-command-snapshot": "^5.3.8",
     "@salesforce/cli-plugins-testkit": "^5.3.41",
     "@salesforce/dev-scripts": "^11.0.4",
     "@salesforce/plugin-command-reference": "^3.1.79",
+    "c8": "^10.1.3",
     "eslint-plugin-sf-plugin": "^1.20.33",
+    "nyc": "^18.0.0",
     "oclif": "^4.22.59",
     "ts-node": "^10.9.2",
     "typescript": "^5.5.4"
@@ -77,6 +79,7 @@
     "postpack": "sf-clean --ignore-signing-artifacts",
     "prepack": "sf-prepack",
     "prepare": "sf-install",
+    "coverage": "nyc mocha \"test/**/*.test.ts\"",
     "test": "wireit",
     "test:nuts": "nyc mocha \"**/*.nut.ts\" --slow 4500 --timeout 600000 --parallel",
     "test:only": "wireit",
