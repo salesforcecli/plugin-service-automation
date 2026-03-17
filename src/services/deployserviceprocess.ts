@@ -42,6 +42,13 @@ import { CatalogItemPatcher } from './catalogItemPatch.js';
 import { RollbackService, RollbackScenario, type RollbackData } from './rollback.js';
 import { createDeploymentContext, type DeploymentContext } from './deploymentContext.js';
 
+/** Helper to apply updates to deployment context immutably (avoids no-param-reassign). */
+class DeploymentContextUpdater {
+  public static update(context: DeploymentContext, updates: Partial<DeploymentContext>): DeploymentContext {
+    return { ...context, ...updates };
+  }
+}
+
 export type { DeployedFlowNames, FlowNameTracking } from '../workspace/serviceProcessTransformer.js';
 export type { DeployServiceProcessDependencies } from './deployDependencies.js';
 
@@ -147,7 +154,7 @@ export class DeployService {
   public async deploy(inputZip: string): Promise<DeployServiceProcessResult> {
     // Phase 1: Prepare deployment (extract workspace, read metadata, validate inputs)
     this.deployStages?.startPhase('Preparing connection');
-    const context = await this.prepareDeployment(inputZip);
+    let context = await this.prepareDeployment(inputZip);
     this.deployStages?.succeedPhase('Preparing connection');
 
     try {
@@ -157,7 +164,7 @@ export class DeployService {
 
       // Phase 3: Deploy Service Process
       this.logger?.info('Starting Service Process creation');
-      await this.deployServiceProcessPhase(context);
+      context = await this.deployServiceProcessPhase(context);
 
       // Phase 4a: Deploy flow metadata (only if needed - rollback-protected zone)
       // Phase 4b: Finalize deployment (link flows to service process)
@@ -166,7 +173,7 @@ export class DeployService {
         if (context.needsDeployment && context.filePaths.length > 0) {
           // Deploy metadata
           this.logger?.info('Starting metadata deploy');
-          await this.deployMetadata(context);
+          context = await this.deployMetadata(context);
 
           // After deploying, check if we have flows to link to the catalog item
           if (context.deployedFlows && context.deployedFlows.length > 0) {
@@ -182,7 +189,9 @@ export class DeployService {
           skippedToDone = true;
         }
         // Success! Disable rollback
-        context.rollback.needed = false;
+        context = DeploymentContextUpdater.update(context, {
+          rollback: { ...context.rollback, needed: false },
+        });
       } catch (error) {
         // Stop deploy MSO and show failure first so output order is: deploy failure → rollback → status (not rollback then deploy).
         // Only needed for TestFlowDeploymentFailure; FlowDeploymentFailed/FinalizationFailed already called failPhase in their phase.
@@ -192,7 +201,7 @@ export class DeployService {
         }
         // Phase 5: Handle rollback if flow deployment/linking fails
         this.logger?.error('Deploy phase failed, starting rollback: %s', (error as Error).message);
-        await this.handleRollback(context, error as Error);
+        context = await this.handleRollback(context, error as Error);
         // Attach context to error for JSON formatting
         (error as Error & { context?: DeploymentContext }).context = context;
         throw error;
@@ -510,7 +519,7 @@ export class DeployService {
    * Phase 3: Deploy Service Process (transform templateData, create zip, upload, deploy template).
    */
   // eslint-disable-next-line complexity
-  private async deployServiceProcessPhase(context: DeploymentContext): Promise<void> {
+  private async deployServiceProcessPhase(context: DeploymentContext): Promise<DeploymentContext> {
     this.deployStages?.startPhase('Creating Service Process');
     const phaseStart = Date.now();
 
@@ -519,8 +528,7 @@ export class DeployService {
       const targetOrgNamespace = await getOrgNamespace(context.connection);
 
       // Transform templateData.json
-      // eslint-disable-next-line no-param-reassign
-      context.deployedFlowNames = deps.serviceProcessTransform(
+      const deployedFlowNames = deps.serviceProcessTransform(
         context.workspace,
         context.deploymentMetadata,
         targetOrgNamespace
@@ -534,26 +542,24 @@ export class DeployService {
 
       // Create zip and upload
       const { zipPath, cleanup } = await DeployWorkspace.createZipFromWorkspace(context.workspace);
-      // eslint-disable-next-line no-param-reassign
-      context.cleanupWorkspaceZip = cleanup;
+      const cleanupWorkspaceZip = cleanup;
 
       const conn = context.connection;
       const uploadResult = await deps.uploadZip(conn, zipPath);
-      // eslint-disable-next-line no-param-reassign
-      context.contentDocumentId = uploadResult.contentDocumentId;
+      const contentDocumentId = uploadResult.contentDocumentId;
 
       // Deploy template (always pass serviceProcessName from templateData when available)
       const templateDeployBody = {
         serviceProcessName: context.templateDataExtract?.name ?? '',
         deploymentMode: 'CrossOrg',
       };
-      const templateDeployEndpoint = `${CONNECT_TEMPLATE_DEPLOY_PATH_PREFIX}/${context.contentDocumentId}`;
+      const templateDeployEndpoint = `${CONNECT_TEMPLATE_DEPLOY_PATH_PREFIX}/${contentDocumentId}`;
       this.logger?.info(
         'Calling Service Process creation API: endpoint=%s body=%o',
         templateDeployEndpoint,
         templateDeployBody
       );
-      const templateDeployResponse = await deps.callTemplateDeploy(conn, context.contentDocumentId, templateDeployBody);
+      const templateDeployResponse = await deps.callTemplateDeploy(conn, contentDocumentId, templateDeployBody);
       this.logger?.debug('Service Process creation API response (object): %o', templateDeployResponse);
       this.logger?.debug(
         'Service Process creation API full response (JSON): %s',
@@ -568,14 +574,7 @@ export class DeployService {
         throw new DeployError(message, 'TemplateDeployFailed');
       }
 
-      // eslint-disable-next-line no-param-reassign
-      context.targetServiceProcessId = templateDeployResponse?.deploymentResult;
-
-      // Enable rollback for ServiceProcessOnly scenario
-      // eslint-disable-next-line no-param-reassign
-      context.rollback.needed = true;
-      // eslint-disable-next-line no-param-reassign
-      context.rollback.scenario = RollbackScenario.ServiceProcessOnly;
+      const targetServiceProcessId = templateDeployResponse?.deploymentResult;
 
       // Success - show tree structure for linked components
       this.deployStages?.succeedPhase('Creating Service Process');
@@ -637,16 +636,24 @@ export class DeployService {
       }
 
       if (this.logger) {
-        if (context.targetServiceProcessId) {
-          this.logger?.debug('Service Process ID: %s', context.targetServiceProcessId);
+        if (targetServiceProcessId) {
+          this.logger?.debug('Service Process ID: %s', targetServiceProcessId);
         }
-        if (context.contentDocumentId) {
-          this.logger?.debug('Content Document ID: %s', context.contentDocumentId);
+        if (contentDocumentId) {
+          this.logger?.debug('Content Document ID: %s', contentDocumentId);
         }
       }
 
       this.logger?.info('Service Process creation completed in %dms', Date.now() - phaseStart);
-      context.recordPhaseTime('createServiceProcess', Date.now() - phaseStart);
+      const nextContext = DeploymentContextUpdater.update(context, {
+        deployedFlowNames,
+        cleanupWorkspaceZip,
+        contentDocumentId,
+        targetServiceProcessId,
+        rollback: { ...context.rollback, needed: true, scenario: RollbackScenario.ServiceProcessOnly },
+      });
+      nextContext.recordPhaseTime('createServiceProcess', Date.now() - phaseStart);
+      return nextContext;
     } catch (error) {
       this.logger?.error('Service Process creation failed: %s', error instanceof Error ? error.message : String(error));
       this.deployStages?.failPhase('Creating Service Process', error as Error);
@@ -658,7 +665,7 @@ export class DeployService {
    * Phase 4a: Deploy flow metadata (transform flows, deploy via Metadata API).
    * NOTE: This method should only be called when deployment is actually needed (checked by caller).
    */
-  private async deployMetadata(context: DeploymentContext): Promise<void> {
+  private async deployMetadata(context: DeploymentContext): Promise<DeploymentContext> {
     const { deps } = this;
 
     this.deployStages?.startPhase('Deploying metadata');
@@ -699,23 +706,22 @@ export class DeployService {
       }
 
       // Deploy flows
-      // eslint-disable-next-line no-param-reassign
-      context.deployedFlows = await deps.deployFlowsFn(context.connection, context.filePaths, {
+      const deployedFlows = await deps.deployFlowsFn(context.connection, context.filePaths, {
         checkOnly: false,
         logger: this.logger,
       });
 
-      if (context.deployedFlows.length === 0) {
+      if (deployedFlows.length === 0) {
         this.deployStages?.succeedPhase('Deploying metadata');
         this.logger?.info('Metadata deploy completed in %dms (no flows deployed)', Date.now() - deployStart);
         context.recordPhaseTime('deployMetadata', Date.now() - deployStart);
-        return;
+        return context;
       }
 
       this.logger?.info(
         'Deployed %d flow(s): %s',
-        context.deployedFlows.length,
-        context.deployedFlows.map((f) => f.fullName).join(', ')
+        deployedFlows.length,
+        deployedFlows.map((f) => f.fullName).join(', ')
       );
 
       // Enrich with FlowDefinition IDs for catalog item linking
@@ -725,26 +731,32 @@ export class DeployService {
       const connection = context.connection;
       const definitionIds = await getFlowDefinitionIds(
         connection,
-        context.deployedFlows.map((f) => f.fullName)
+        deployedFlows.map((f) => f.fullName)
       );
       this.logger?.debug('Fetched flow definition ids from Tooling API');
-      for (const f of context.deployedFlows) {
-        f.definitionId = definitionIds.get(f.fullName);
+      const enrichedFlows = deployedFlows.map((f) => ({
+        ...f,
+        definitionId: definitionIds.get(f.fullName),
+      }));
+      for (const f of enrichedFlows) {
         this.logger?.debug('%s: id=%s, definitionId=%s', f.fullName, f.id, f.definitionId ?? '(not found)');
       }
 
       // Update flow items display to include InteractionDefinitionVersion IDs (from deployment)
       if (this.command && !this.command.jsonEnabled()) {
-        this.deployStages?.setDeployingMetadataItems(DeployService.buildFlowDisplayItems(context, true));
+        this.deployStages?.setDeployingMetadataItems(
+          DeployService.buildFlowDisplayItems({ ...context, deployedFlows: enrichedFlows }, true)
+        );
       }
 
-      // Upgrade rollback scenario: now flows are deployed
-      // eslint-disable-next-line no-param-reassign
-      context.rollback.scenario = RollbackScenario.ServiceProcessAndFlows;
-
+      const nextContext = DeploymentContextUpdater.update(context, {
+        deployedFlows: enrichedFlows,
+        rollback: { ...context.rollback, scenario: RollbackScenario.ServiceProcessAndFlows },
+      });
       this.deployStages?.succeedPhase('Deploying metadata');
       this.logger?.info('Metadata deploy completed in %dms', Date.now() - deployStart);
-      context.recordPhaseTime('deployMetadata', Date.now() - deployStart);
+      nextContext.recordPhaseTime('deployMetadata', Date.now() - deployStart);
+      return nextContext;
     } catch (error) {
       this.logger?.error('Metadata deploy failed: %s', error instanceof Error ? error.message : String(error));
       this.deployStages?.failPhase('Deploying metadata', error as Error);
@@ -789,17 +801,18 @@ export class DeployService {
   /**
    * Phase 5: Handle rollback when deployment fails.
    */
-  private async handleRollback(context: DeploymentContext, error: Error): Promise<void> {
+  private async handleRollback(context: DeploymentContext, error: Error): Promise<DeploymentContext> {
     this.logger?.info('Starting rollback (scenario: %s)', context.rollback.scenario ?? 'unknown');
     this.logger?.debug('Deployment failed: %s', error.message);
 
     if (!context.rollback.needed || !context.targetServiceProcessId) {
-      return;
+      return context;
     }
 
     // Mark rollback as attempted
-    // eslint-disable-next-line no-param-reassign
-    context.rollback.attempted = true;
+    let currentContext = DeploymentContextUpdater.update(context, {
+      rollback: { ...context.rollback, attempted: true },
+    });
 
     // Clear deploy tree so "Service Process Created" is not shown when command's catch calls deployStages.stop()
     this.deployStages?.clearTreeStructure();
@@ -809,7 +822,7 @@ export class DeployService {
       this.command.log(ROLLBACK_SECTION_HEADER);
     }
 
-    const rollbackStages = new RollbackStages(this.command!, context.rollback.scenario!);
+    const rollbackStages = new RollbackStages(this.command!, currentContext.rollback.scenario!);
     rollbackStages.start();
 
     const rollbackStartTime = Date.now();
@@ -817,9 +830,9 @@ export class DeployService {
 
     try {
       const rollbackData: RollbackData = {
-        targetServiceProcessId: context.targetServiceProcessId,
-        deployedFlows: context.deployedFlows,
-        deployedFlowNames: context.deployedFlowNames,
+        targetServiceProcessId: currentContext.targetServiceProcessId!,
+        deployedFlows: currentContext.deployedFlows,
+        deployedFlowNames: currentContext.deployedFlowNames,
       };
 
       const onProgress = (step: string, status: 'start' | 'complete'): void => {
@@ -830,16 +843,24 @@ export class DeployService {
         }
       };
 
-      await this.performRollback(context.connection, context.rollback.scenario!, rollbackData, this.logger, onProgress);
+      await this.performRollback(
+        currentContext.connection,
+        currentContext.rollback.scenario!,
+        rollbackData,
+        this.logger,
+        onProgress
+      );
 
       const duration = Date.now() - rollbackStartTime;
       rollbackStages.finish(duration);
-      // eslint-disable-next-line no-param-reassign
-      context.rollback.succeeded = true;
+      currentContext = DeploymentContextUpdater.update(currentContext, {
+        rollback: { ...currentContext.rollback, succeeded: true },
+      });
     } catch (rollbackError) {
       rollbackFailed = true;
-      // eslint-disable-next-line no-param-reassign
-      context.rollback.succeeded = false;
+      currentContext = DeploymentContextUpdater.update(currentContext, {
+        rollback: { ...currentContext.rollback, succeeded: false },
+      });
       this.logger?.error('Rollback step failed: %s', (rollbackError as Error).message);
       rollbackStages.fail(rollbackError as Error);
       // Don't re-throw: original error is more important
@@ -849,16 +870,18 @@ export class DeployService {
       // Manual cleanup when rollback failed (shown once after rollback section)
       if (rollbackFailed) {
         this.command.log('Manual cleanup in the target org is required. Delete the following artifacts:\n');
-        this.command.log(`  Service Process (Product2): ${context.targetServiceProcessId}`);
-        if (context.deployedFlows && context.deployedFlows.length > 0) {
+        this.command.log(`  Service Process (Product2): ${currentContext.targetServiceProcessId ?? 'unknown'}`);
+        if (currentContext.deployedFlows && currentContext.deployedFlows.length > 0) {
           this.command.log('  Deployed flows (InteractionDefinitionVersion / Flow):');
-          for (const f of context.deployedFlows) {
+          for (const f of currentContext.deployedFlows) {
             this.command.log(`    - ${f.fullName} (ID: ${f.id ?? 'unknown'})`);
           }
         }
         this.command.log('');
       }
     }
+
+    return currentContext;
   }
 
   // eslint-disable-next-line class-methods-use-this
