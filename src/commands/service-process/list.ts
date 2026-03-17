@@ -54,9 +54,6 @@ export default class ServiceProcessList extends SfCommand<ServiceProcessListResu
   public async run(): Promise<ServiceProcessListResult> {
     const { flags } = await this.parse(ServiceProcessList);
 
-    const DEFAULT_LIMIT = 1000;
-    const limit = flags.limit ?? DEFAULT_LIMIT;
-
     const connection = flags['target-org'].getConnection(flags['api-version']);
 
     const minApiContext: ValidationContext = {
@@ -76,7 +73,7 @@ export default class ServiceProcessList extends SfCommand<ServiceProcessListResu
       );
 
       const result = await connection.query<{ Name: string; Id: string; Description?: string; IsActive: boolean }>(
-        `SELECT Id, Name, Description, IsActive FROM Product2 WHERE UsedFor = 'ServiceProcess' ORDER BY Name LIMIT ${limit}`
+        `SELECT Id, Name, Description, IsActive FROM Product2 WHERE UsedFor = 'ServiceProcess' ORDER BY Name LIMIT ${flags.limit}`
       );
 
       const serviceProcessList = result.records;
