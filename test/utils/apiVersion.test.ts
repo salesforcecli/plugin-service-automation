@@ -25,7 +25,7 @@ import {
 describe('apiVersion', () => {
   describe('constants', () => {
     it('exports MIN_SERVICE_PROCESS_API_VERSION', () => {
-      expect(MIN_SERVICE_PROCESS_API_VERSION).to.equal('66.0');
+      expect(MIN_SERVICE_PROCESS_API_VERSION).to.equal('67.0');
     });
     it('exports MIN_API_VERSION_TEMPLATE_DEPLOY_SERVICE_PROCESS_NAME', () => {
       expect(MIN_API_VERSION_TEMPLATE_DEPLOY_SERVICE_PROCESS_NAME).to.equal('67.0');
