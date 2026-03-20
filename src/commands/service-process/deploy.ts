@@ -14,9 +14,8 @@
  * limitations under the License.
  */
 
-import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { SfCommand, Flags } from '@salesforce/sf-plugins-core';
+import { SfCommand, Flags, StandardColors } from '@salesforce/sf-plugins-core';
 import { Logger, Messages, SfError } from '@salesforce/core';
 import { DeployError, ValidationError } from '../../errors.js';
 import { DeployService } from '../../services/deployserviceprocess.js';
@@ -36,10 +35,6 @@ import { PreflightValidator } from '../../validation/PreflightValidator.js';
 Messages.importMessagesDirectoryFromMetaUrl(import.meta.url);
 const messages = Messages.loadMessages('@salesforce/plugin-service-automation', 'service-process.deploy');
 
-/** ANSI red for validation header in terminal (matches DeploymentStages). */
-const RED = '\x1b[31m';
-const RESET = '\x1b[0m';
-
 export type ServiceProcessDeployResult =
   | DeployJsonOutput['result']
   | {
@@ -55,29 +50,17 @@ export default class ServiceProcessDeploy extends SfCommand<ServiceProcessDeploy
   public static readonly flags = {
     'target-org': Flags.requiredOrg(),
     'api-version': Flags.orgApiVersion(),
-    'input-zip': Flags.string({
+    'input-zip': Flags.file({
       summary: messages.getMessage('flags.input-zip.summary'),
       char: 'z',
       required: true,
+      exists: true,
       description: messages.getMessage('flags.input-zip.description'),
-      parse: async (input: string): Promise<string> => {
-        let stat: fs.Stats;
-        try {
-          stat = await fs.promises.stat(input);
-        } catch (err) {
-          const code = (err as NodeJS.ErrnoException)?.code;
-          if (code === 'ENOENT') {
-            throw new SfError(`Input zip file does not exist: ${input}`, 'InvalidInputPath');
-          }
-          throw err;
-        }
-        if (!stat.isFile()) {
-          throw new SfError(`Input must be a file, not a directory: ${input}`, 'InvalidNotFile');
-        }
+      parse: (input: string): Promise<string> => {
         if (path.extname(input).toLowerCase() !== '.zip') {
           throw new SfError(`Input file must have a .zip extension: ${input}`, 'InvalidFileType');
         }
-        return input;
+        return Promise.resolve(input);
       },
     }),
     'link-intake': Flags.boolean({
@@ -115,7 +98,7 @@ export default class ServiceProcessDeploy extends SfCommand<ServiceProcessDeploy
     const runId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
     const logger = await Logger.child('service-process-deploy', { runId });
     logger.debug('Preflight check passed');
-    logger.info('Deploy started: inputZip=%s', inputZip);
+    logger.info(`Deploy started: inputZip=${inputZip}`);
     const deployApiVersion = flags['api-version'];
     const deployStages = new DeploymentStages(
       this,
@@ -201,8 +184,8 @@ export default class ServiceProcessDeploy extends SfCommand<ServiceProcessDeploy
   ): ServiceProcessDeployResult {
     const deployErr = err as DeployError;
     const formattedMessage = getFormattedMessageForLog(err);
-    logger.error('Deploy failed [inputZip=%s]: %s', inputZip, formattedMessage);
-    logger.debug('Deploy failed (raw): %s', err instanceof Error ? err.message : String(err));
+    logger.error(`Deploy failed [inputZip=${inputZip}]: ${formattedMessage}`);
+    logger.debug(`Deploy failed (raw): ${err instanceof Error ? err.message : String(err)}`);
     deployStages.stop();
     const isValidationFailure = err instanceof ValidationError && Boolean(err.failures?.length);
     if (isValidationFailure && !this.jsonEnabled() && err instanceof ValidationError) {
@@ -210,7 +193,7 @@ export default class ServiceProcessDeploy extends SfCommand<ServiceProcessDeploy
       const firstNewline = msg.indexOf('\n');
       const header = firstNewline >= 0 ? msg.slice(0, firstNewline) : msg;
       const rest = firstNewline >= 0 ? msg.slice(firstNewline) : '';
-      this.log('\n' + RED + header + RESET + rest);
+      this.log('\n' + StandardColors.error(header) + rest);
     }
     deployStages.logSummary(this.getFailedSummary(Date.now() - startTime));
 
