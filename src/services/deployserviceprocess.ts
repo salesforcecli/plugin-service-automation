@@ -19,7 +19,7 @@ import * as path from 'node:path';
 import type { Connection, Org } from '@salesforce/core';
 import type { Logger } from '@salesforce/core';
 import type { SfCommand } from '@salesforce/sf-plugins-core';
-import { CONNECT_TEMPLATE_DEPLOY_PATH_PREFIX, METADATA_FLOWS_RELATIVE_PATH } from '../constants.js';
+import { METADATA_FLOWS_RELATIVE_PATH } from '../constants.js';
 import { DeployError, MissingMetadataFileError, TemplateDataError, ValidationError } from '../errors.js';
 import { type DeployedFlowInfo } from '../utils/flow/deployflow.js';
 import { getFlowDefinitionIds, getOrgNamespace } from '../utils/flow/flowMetadata.js';
@@ -36,6 +36,7 @@ import type { DeployedFlowNames } from '../workspace/serviceProcessTransformer.j
 import { ValidationRunner, builtInValidatorsWithMetadata } from '../validation/index.js';
 import type { ValidationContext } from '../validation/types.js';
 import { DeploymentStages, type TreeItem } from '../utils/deploymentStages.js';
+import { formatErrorResponseForLog } from '../utils/safeStringify.js';
 import { RollbackStages, ROLLBACK_SECTION_HEADER } from '../utils/rollbackStages.js';
 import { defaults, type DeployServiceProcessDependencies } from './deployDependencies.js';
 import { CatalogItemPatcher } from './catalogItemPatch.js';
@@ -200,7 +201,7 @@ export class DeployService {
           this.deployStages.failPhase('Deploying metadata', error as Error);
         }
         // Phase 5: Handle rollback if flow deployment/linking fails
-        this.logger?.error('Deploy phase failed, starting rollback: %s', (error as Error).message);
+        this.logger?.error(`Deploy phase failed, starting rollback: ${(error as Error).message}`);
         context = await this.handleRollback(context, error as Error);
         // Attach context to error for JSON formatting
         (error as Error & { context?: DeploymentContext }).context = context;
@@ -298,15 +299,13 @@ export class DeployService {
     const flowDir = path.join(workspace, METADATA_FLOWS_RELATIVE_PATH);
     const intakeFormFlowPath = FlowPathResolver.resolveFlowFilePath(flowDir, deployedFlowNames.intakeForm.originalName);
     this.logger?.debug(
-      'Calling FlowTransformer.transformIntakeFormFlow: %s %s',
-      intakeFormFlowPath,
-      targetServiceProcessId
+      `Calling FlowTransformer.transformIntakeFormFlow: ${intakeFormFlowPath} ${targetServiceProcessId}`
     );
     const transformResult = await Promise.resolve(
       this.deps.flowTransformer(intakeFormFlowPath, targetServiceProcessId, this.logger)
     );
     if (transformResult.modified) {
-      this.logger?.debug('Flow transformer: %s', transformResult.message);
+      this.logger?.debug(`Flow transformer: ${transformResult.message}`);
     }
   }
 
@@ -319,7 +318,7 @@ export class DeployService {
 
     // Extract workspace
     const { workspace, cleanup: cleanupWorkspace } = await DeployWorkspace.extractZipToWorkspace(inputZip);
-    this.logger?.debug('Workspace extracted to %s', workspace);
+    this.logger?.debug(`Workspace extracted to ${workspace}`);
 
     // Get connection and target org namespace early so we can apply --link-intake / --link-fulfillment overrides before validations
     const connection = this.org.getConnection(this.expectedApiVersion);
@@ -353,9 +352,9 @@ export class DeployService {
     }
 
     this.logger?.debug(
-      'Deployment metadata: intake=%s, fulfillment=%s',
-      deploymentMetadata.intakeFlow?.deploymentIntent ?? 'none',
-      deploymentMetadata.fulfillmentFlow?.deploymentIntent ?? 'none'
+      `Deployment metadata: intake=${deploymentMetadata.intakeFlow?.deploymentIntent ?? 'none'}, fulfillment=${
+        deploymentMetadata.fulfillmentFlow?.deploymentIntent ?? 'none'
+      }`
     );
 
     const { filePaths, templateDataExtract } = TemplateDataReader.deriveFlowsAndTemplateData(workspace);
@@ -382,7 +381,7 @@ export class DeployService {
     // This ensures validators check Draft flows instead of Active flows with runtime errors
     FlowTransformer.setFlowsToDraft(workspace, deploymentMetadata);
 
-    this.logger?.debug('Prepare complete: %d flow file(s) to deploy', filePaths.length);
+    this.logger?.debug(`Prepare complete: ${filePaths.length} flow file(s) to deploy`);
 
     // Create and return deployment context
     return createDeploymentContext({
@@ -503,13 +502,18 @@ export class DeployService {
       // Success - substages remain visible showing which validators ran
       this.deployStages?.succeedPhase('Validating deployment');
 
-      this.logger?.info('Validation completed in %dms', Date.now() - phaseStart);
+      this.logger?.info(`Validation completed in ${Date.now() - phaseStart}ms`);
       context.recordPhaseTime('validation', Date.now() - phaseStart);
     } catch (error) {
       this.logger?.error(`Validation failed: ${error instanceof Error ? error.message : String(error)}`);
       if (error instanceof ValidationError && error.failures?.length) {
-        this.logger?.debug('Validation failed validators: %s', error.failures.map((f) => f.name).join(', '));
+        this.logger?.debug(`Validation failed validators: ${error.failures.map((f) => f.name).join(', ')}`);
       }
+      // Stack only for unexpected errors during validation phase (not business-rule ValidationError)
+      if (this.logger && error instanceof Error && error.stack && !(error instanceof ValidationError)) {
+        this.logger.debug(`Validation error stack: ${error.stack}`);
+      }
+      this.logger?.debug(`Validation failed in ${Date.now() - phaseStart}ms`);
       this.deployStages?.failPhase('Validating deployment', error as Error);
       throw error;
     }
@@ -536,8 +540,7 @@ export class DeployService {
 
       const templateDataPath = path.join(context.workspace, 'templateData.json');
       if (this.logger && fs.existsSync(templateDataPath)) {
-        const updatedTemplateData = fs.readFileSync(templateDataPath, 'utf-8');
-        this.logger?.debug('Updated templateData.json before deploy: %s', updatedTemplateData);
+        this.logger?.debug('templateData.json updated before deploy');
       }
 
       // Create zip and upload
@@ -545,26 +548,24 @@ export class DeployService {
       const cleanupWorkspaceZip = cleanup;
 
       const conn = context.connection;
+      this.logger?.debug(`Uploading zip (path=${zipPath})`);
+      const uploadStart = Date.now();
       const uploadResult = await deps.uploadZip(conn, zipPath);
       const contentDocumentId = uploadResult.contentDocumentId;
+      this.logger?.debug(`Upload completed in ${Date.now() - uploadStart}ms`);
+      this.logger?.debug(`Upload full response: ${JSON.stringify(uploadResult)}`);
 
       // Deploy template (always pass serviceProcessName from templateData when available)
       const templateDeployBody = {
         serviceProcessName: context.templateDataExtract?.name ?? '',
         deploymentMode: 'CrossOrg',
       };
-      const templateDeployEndpoint = `${CONNECT_TEMPLATE_DEPLOY_PATH_PREFIX}/${contentDocumentId}`;
-      this.logger?.info(
-        'Calling Service Process creation API: endpoint=%s body=%o',
-        templateDeployEndpoint,
-        templateDeployBody
+      this.logger?.debug(
+        `Service Process creation API start (contentDocumentId=${contentDocumentId}, serviceProcessName=${templateDeployBody.serviceProcessName})`
       );
       const templateDeployResponse = await deps.callTemplateDeploy(conn, contentDocumentId, templateDeployBody);
-      this.logger?.debug('Service Process creation API response (object): %o', templateDeployResponse);
-      this.logger?.debug(
-        'Service Process creation API full response (JSON): %s',
-        JSON.stringify(templateDeployResponse, null, 2)
-      );
+      this.logger?.debug(`Service Process creation completed in ${Date.now() - phaseStart}ms`);
+      this.logger?.debug(`Service Process creation full response: ${JSON.stringify(templateDeployResponse)}`);
 
       if (templateDeployResponse?.status === 'FAILURE') {
         const message =
@@ -637,14 +638,13 @@ export class DeployService {
 
       if (this.logger) {
         if (targetServiceProcessId) {
-          this.logger?.debug('Service Process ID: %s', targetServiceProcessId);
+          this.logger?.debug(`Service Process ID: ${targetServiceProcessId}`);
         }
         if (contentDocumentId) {
-          this.logger?.debug('Content Document ID: %s', contentDocumentId);
+          this.logger?.debug(`Content Document ID: ${contentDocumentId}`);
         }
       }
 
-      this.logger?.info('Service Process creation completed in %dms', Date.now() - phaseStart);
       const nextContext = DeploymentContextUpdater.update(context, {
         deployedFlowNames,
         cleanupWorkspaceZip,
@@ -655,7 +655,15 @@ export class DeployService {
       nextContext.recordPhaseTime('createServiceProcess', Date.now() - phaseStart);
       return nextContext;
     } catch (error) {
-      this.logger?.error('Service Process creation failed: %s', error instanceof Error ? error.message : String(error));
+      this.logger?.error(`Service Process creation failed: ${error instanceof Error ? error.message : String(error)}`);
+      const err = error as Error & { response?: unknown };
+      if (this.logger && err.response !== undefined) {
+        this.logger.debug(`Service Process creation error full response: ${formatErrorResponseForLog(err.response)}`);
+      }
+      if (this.logger && error instanceof Error && error.stack) {
+        this.logger.debug(`Service Process creation error stack: ${error.stack}`);
+      }
+      this.logger?.debug(`Service Process creation failed in ${Date.now() - phaseStart}ms`);
       this.deployStages?.failPhase('Creating Service Process', error as Error);
       throw error;
     }
@@ -701,7 +709,7 @@ export class DeployService {
           this.logger
         );
         if (fulfillmentResult.modified) {
-          this.logger?.debug('Flow transformer: %s', fulfillmentResult.message);
+          this.logger?.debug(`Flow transformer: ${fulfillmentResult.message}`);
         }
       }
 
@@ -713,16 +721,12 @@ export class DeployService {
 
       if (deployedFlows.length === 0) {
         this.deployStages?.succeedPhase('Deploying metadata');
-        this.logger?.info('Metadata deploy completed in %dms (no flows deployed)', Date.now() - deployStart);
+        this.logger?.info(`Metadata deploy completed in ${Date.now() - deployStart}ms (no flows deployed)`);
         context.recordPhaseTime('deployMetadata', Date.now() - deployStart);
         return context;
       }
 
-      this.logger?.info(
-        'Deployed %d flow(s): %s',
-        deployedFlows.length,
-        deployedFlows.map((f) => f.fullName).join(', ')
-      );
+      this.logger?.info(`Deployed ${deployedFlows.length} flow(s): ${deployedFlows.map((f) => f.fullName).join(', ')}`);
 
       // Enrich with FlowDefinition IDs for catalog item linking
       // Note: Two types of IDs exist:
@@ -739,7 +743,7 @@ export class DeployService {
         definitionId: definitionIds.get(f.fullName),
       }));
       for (const f of enrichedFlows) {
-        this.logger?.debug('%s: id=%s, definitionId=%s', f.fullName, f.id, f.definitionId ?? '(not found)');
+        this.logger?.debug(`${f.fullName}: id=${f.id}, definitionId=${f.definitionId ?? '(not found)'}`);
       }
 
       // Update flow items display to include InteractionDefinitionVersion IDs (from deployment)
@@ -754,11 +758,19 @@ export class DeployService {
         rollback: { ...context.rollback, scenario: RollbackScenario.ServiceProcessAndFlows },
       });
       this.deployStages?.succeedPhase('Deploying metadata');
-      this.logger?.info('Metadata deploy completed in %dms', Date.now() - deployStart);
+      this.logger?.info(`Metadata deploy completed in ${Date.now() - deployStart}ms`);
       nextContext.recordPhaseTime('deployMetadata', Date.now() - deployStart);
       return nextContext;
     } catch (error) {
-      this.logger?.error('Metadata deploy failed: %s', error instanceof Error ? error.message : String(error));
+      this.logger?.error(`Metadata deploy failed: ${error instanceof Error ? error.message : String(error)}`);
+      const err = error as Error & { response?: unknown };
+      if (this.logger && err.response !== undefined) {
+        this.logger.debug(`Metadata deploy error full response: ${formatErrorResponseForLog(err.response)}`);
+      }
+      if (this.logger && error instanceof Error && error.stack) {
+        this.logger.debug(`Metadata deploy error stack: ${error.stack}`);
+      }
+      this.logger?.debug(`Metadata deploy failed in ${Date.now() - deployStart}ms`);
       this.deployStages?.failPhase('Deploying metadata', error as Error);
       const message = error instanceof Error ? error.message : String(error);
       throw new DeployError(message, 'FlowDeploymentFailed');
@@ -788,10 +800,18 @@ export class DeployService {
       }
 
       this.deployStages?.succeedPhase('Linking deployed components');
-      this.logger?.info('Linking completed in %dms', Date.now() - finalizeStart);
+      this.logger?.info(`Linking completed in ${Date.now() - finalizeStart}ms`);
       context.recordPhaseTime('finalize', Date.now() - finalizeStart);
     } catch (error) {
-      this.logger?.error('Linking failed: %s', error instanceof Error ? error.message : String(error));
+      this.logger?.error(`Linking failed: ${error instanceof Error ? error.message : String(error)}`);
+      const err = error as Error & { response?: unknown };
+      if (this.logger && err.response !== undefined) {
+        this.logger.debug(`Linking error full response: ${formatErrorResponseForLog(err.response)}`);
+      }
+      if (this.logger && error instanceof Error && error.stack) {
+        this.logger.debug(`Linking error stack: ${error.stack}`);
+      }
+      this.logger?.debug(`Linking failed in ${Date.now() - finalizeStart}ms`);
       this.deployStages?.failPhase('Linking deployed components', error as Error);
       const message = error instanceof Error ? error.message : String(error);
       throw new DeployError(message, 'FinalizationFailed');
@@ -802,8 +822,8 @@ export class DeployService {
    * Phase 5: Handle rollback when deployment fails.
    */
   private async handleRollback(context: DeploymentContext, error: Error): Promise<DeploymentContext> {
-    this.logger?.info('Starting rollback (scenario: %s)', context.rollback.scenario ?? 'unknown');
-    this.logger?.debug('Deployment failed: %s', error.message);
+    this.logger?.info(`Starting rollback (scenario: ${context.rollback.scenario ?? 'unknown'})`);
+    this.logger?.debug(`Deployment failed: ${error.message}`);
 
     if (!context.rollback.needed || !context.targetServiceProcessId) {
       return context;
@@ -861,7 +881,14 @@ export class DeployService {
       currentContext = DeploymentContextUpdater.update(currentContext, {
         rollback: { ...currentContext.rollback, succeeded: false },
       });
-      this.logger?.error('Rollback step failed: %s', (rollbackError as Error).message);
+      this.logger?.error(`Rollback step failed: ${(rollbackError as Error).message}`);
+      const err = rollbackError as Error & { response?: unknown };
+      if (this.logger && err.response !== undefined) {
+        this.logger.debug(`Rollback error full response: ${formatErrorResponseForLog(err.response)}`);
+      }
+      if (this.logger && rollbackError instanceof Error && rollbackError.stack) {
+        this.logger.debug(`Rollback error stack: ${rollbackError.stack}`);
+      }
       rollbackStages.fail(rollbackError as Error);
       // Don't re-throw: original error is more important
     }

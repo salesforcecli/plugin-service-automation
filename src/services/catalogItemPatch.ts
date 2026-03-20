@@ -18,6 +18,7 @@ import type { Connection } from '@salesforce/core';
 import type { Logger } from '@salesforce/core';
 import { buildCatalogItemPath } from '../constants.js';
 import { getConnect, patchConnect } from '../utils/api/connectApi.js';
+import { formatErrorResponseForLog } from '../utils/safeStringify.js';
 import type { DeployedFlowInfo } from '../utils/flow/deployflow.js';
 import type { DeployedFlowNames } from '../workspace/serviceProcessTransformer.js';
 
@@ -98,14 +99,30 @@ export class CatalogItemPatcher {
 
     const catalogItemPath = buildCatalogItemPath(targetServiceProcessId);
 
-    const catalogItem = await getConnect<CatalogItemGetResponse>(conn, catalogItemPath);
+    logger?.debug(`Fetching catalog item (path=${catalogItemPath})`);
+    const getStart = Date.now();
+    let catalogItem: CatalogItemGetResponse;
+    try {
+      catalogItem = await getConnect<CatalogItemGetResponse>(conn, catalogItemPath);
+      logger?.debug(`Catalog item GET completed in ${Date.now() - getStart}ms`);
+      logger?.debug(`Catalog item GET full response: ${JSON.stringify(catalogItem)}`);
+    } catch (error) {
+      logger?.error(`Catalog item GET failed: ${error instanceof Error ? error.message : String(error)}`);
+      const err = error as Error & { response?: unknown };
+      if (logger && err.response !== undefined) {
+        logger.debug(`Catalog item GET error full response: ${formatErrorResponseForLog(err.response)}`);
+      }
+      logger?.debug(`Catalog item GET failed in ${Date.now() - getStart}ms`);
+      throw error;
+    }
+
     const existingIntakeFormId = catalogItem?.intakeForm?.id;
     const contextDefinitionDevNameOrId = catalogItem?.contextDefinitionDevNameOrId;
     if (existingIntakeFormId) {
-      logger?.debug('Fetched catalog item intakeForm.id: %s', existingIntakeFormId);
+      logger?.debug(`Fetched catalog item intakeForm.id: ${existingIntakeFormId}`);
     }
     if (contextDefinitionDevNameOrId) {
-      logger?.debug('Fetched catalog item contextDefinitionDevNameOrId: %s', contextDefinitionDevNameOrId);
+      logger?.debug(`Fetched catalog item contextDefinitionDevNameOrId: ${contextDefinitionDevNameOrId}`);
     }
 
     const catalogItemBody = CatalogItemPatcher.buildCatalogItemPatchBody(
@@ -116,16 +133,31 @@ export class CatalogItemPatcher {
       serviceProcessName
     );
 
-    logger?.info('Patching catalog item: %s', catalogItemPath);
-    logger?.debug('Request body %o', catalogItemBody);
-    const patchResponse = await patchConnect(conn, catalogItemPath, catalogItemBody);
-    logger?.debug('Patch response %o', patchResponse);
-    logger?.info('Catalog item patched successfully.');
-    logger?.info(
-      'Linked Service Process %s to intake %s, fulfillment %s',
-      targetServiceProcessId,
-      intakeFormDefinitionId ?? 'none',
-      fulfillmentFlowDefinitionId ?? 'none'
+    logger?.info(`Patching catalog item: ${catalogItemPath}`);
+    logger?.debug(
+      `Catalog item PATCH start (path=${catalogItemPath}, intakeFormDefId=${
+        intakeFormDefinitionId ?? 'none'
+      }, fulfillmentDefId=${fulfillmentFlowDefinitionId ?? 'none'})`
     );
+    const patchStart = Date.now();
+    try {
+      const patchResponse = await patchConnect(conn, catalogItemPath, catalogItemBody);
+      logger?.debug(`Catalog item PATCH completed in ${Date.now() - patchStart}ms`);
+      logger?.debug(`Catalog item PATCH full response: ${JSON.stringify(patchResponse)}`);
+      logger?.info('Catalog item patched successfully.');
+      logger?.info(
+        `Linked Service Process ${targetServiceProcessId} to intake ${intakeFormDefinitionId ?? 'none'}, fulfillment ${
+          fulfillmentFlowDefinitionId ?? 'none'
+        }`
+      );
+    } catch (error) {
+      logger?.error(`Catalog item PATCH failed: ${error instanceof Error ? error.message : String(error)}`);
+      const err = error as Error & { response?: unknown };
+      if (logger && err.response !== undefined) {
+        logger.debug(`Catalog item PATCH error full response: ${formatErrorResponseForLog(err.response)}`);
+      }
+      logger?.debug(`Catalog item PATCH failed in ${Date.now() - patchStart}ms`);
+      throw error;
+    }
   }
 }

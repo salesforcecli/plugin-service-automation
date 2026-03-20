@@ -18,6 +18,7 @@ import type { Connection } from '@salesforce/core';
 import type { Logger } from '@salesforce/core';
 import { buildCatalogItemPath } from '../constants.js';
 import { getConnect, patchConnect } from '../utils/api/connectApi.js';
+import { formatErrorResponseForLog } from '../utils/safeStringify.js';
 import type { DeployedFlowInfo } from '../utils/flow/deployflow.js';
 import type { DeployedFlowNames } from '../workspace/serviceProcessTransformer.js';
 import type { CatalogItemGetResponse } from './catalogItemPatch.js';
@@ -155,7 +156,22 @@ export class RollbackService {
     logger?: Logger
   ): Promise<void> {
     const catalogItemPath = buildCatalogItemPath(targetServiceProcessId);
-    const catalogItem = await getConnect<CatalogItemGetResponse>(connection, catalogItemPath);
+    logger?.debug(`Unlink: fetching catalog item (path=${catalogItemPath})`);
+    const getStart = Date.now();
+    let catalogItem: CatalogItemGetResponse | undefined;
+    try {
+      catalogItem = await getConnect<CatalogItemGetResponse>(connection, catalogItemPath);
+      logger?.debug(`Unlink catalog item GET completed in ${Date.now() - getStart}ms`);
+      logger?.debug(`Unlink catalog item GET full response: ${JSON.stringify(catalogItem)}`);
+    } catch (error) {
+      logger?.error(`Unlink: catalog item GET failed: ${error instanceof Error ? error.message : String(error)}`);
+      const err = error as Error & { response?: unknown };
+      if (logger && err.response !== undefined) {
+        logger.debug(`Unlink: catalog item GET error full response: ${formatErrorResponseForLog(err.response)}`);
+      }
+      logger?.debug(`Unlink catalog item GET failed in ${Date.now() - getStart}ms`);
+      throw error;
+    }
 
     const unlinkBody: Record<string, unknown> = {
       agentAction: {},
@@ -178,7 +194,7 @@ export class RollbackService {
         operationType: 'Update',
         id: catalogItem.intakeForm.id,
       };
-      logger?.debug('Unlinking intake form (ID: %s)', catalogItem.intakeForm.id);
+      logger?.debug(`Unlinking intake form (ID: ${catalogItem.intakeForm.id})`);
     }
 
     if (catalogItem?.fulfillmentFlow?.id) {
@@ -186,7 +202,7 @@ export class RollbackService {
         operationType: 'Delete',
         id: catalogItem.fulfillmentFlow.id,
       };
-      logger?.debug('Unlinking fulfillment flow (ID: %s)', catalogItem.fulfillmentFlow.id);
+      logger?.debug(`Unlinking fulfillment flow (ID: ${catalogItem.fulfillmentFlow.id})`);
     }
 
     if (
@@ -198,25 +214,28 @@ export class RollbackService {
         operationType: 'Delete',
         id: pp.id,
       }));
-      logger?.debug('Unlinking %d preprocessor(s)', catalogItem.preProcessors.length);
+      logger?.debug(`Unlinking ${catalogItem.preProcessors.length} preprocessor(s)`);
     }
 
     if (catalogItem?.contextDefinitionDevNameOrId) {
       unlinkBody.contextDefinitionDevNameOrId = catalogItem.contextDefinitionDevNameOrId;
     }
 
-    logger?.debug('Patching catalog item to unlink components: %s', catalogItemPath);
-    logger?.debug('Unlink request body %o', unlinkBody);
-
+    logger?.debug(`Unlink: PATCH start (path=${catalogItemPath})`);
+    const patchStart = Date.now();
     try {
       const patchResponse = await patchConnect(connection, catalogItemPath, unlinkBody);
-      logger?.debug('Unlink response %o', patchResponse);
+      logger?.debug(`Unlink PATCH completed in ${Date.now() - patchStart}ms`);
+      logger?.debug(`Unlink PATCH full response: ${JSON.stringify(patchResponse)}`);
       logger?.info('All components unlinked successfully.');
     } catch (error) {
-      logger?.error('Unlink PATCH failed: %s', error instanceof Error ? error.message : String(error));
+      logger?.error(`Unlink PATCH failed: ${error instanceof Error ? error.message : String(error)}`);
       if (error && typeof error === 'object' && 'response' in error) {
-        logger?.debug('Error response body %o', (error as { response: unknown }).response);
+        logger?.debug(
+          `Unlink: PATCH error full response: ${formatErrorResponseForLog((error as { response: unknown }).response)}`
+        );
       }
+      logger?.debug(`Unlink PATCH failed in ${Date.now() - patchStart}ms`);
       throw error;
     }
   }
@@ -230,24 +249,31 @@ export class RollbackService {
     targetServiceProcessId: string,
     logger?: Logger
   ): Promise<void> {
-    logger?.info('Deleting Service Process via Product2 sobject: %s', targetServiceProcessId);
+    logger?.info(`Deleting Service Process via Product2 sobject: ${targetServiceProcessId}`);
+    logger?.debug(`Delete Service Process start (id=${targetServiceProcessId})`);
+    const deleteStart = Date.now();
 
     try {
       const deleteResult = await connection.sobject('Product2').destroy(targetServiceProcessId);
-
-      logger?.debug('Delete result %o', deleteResult);
+      logger?.debug(`Delete Service Process completed in ${Date.now() - deleteStart}ms`);
+      logger?.debug(`Delete Service Process full response: ${JSON.stringify(deleteResult)}`);
 
       if (!deleteResult.success) {
         const errors = Array.isArray(deleteResult.errors)
           ? deleteResult.errors.join(', ')
           : JSON.stringify(deleteResult.errors);
-        logger?.error('Delete failed: %s', errors);
+        logger?.error(`Delete failed: ${errors}`);
         throw new Error(`Failed to delete Service Process: ${errors}`);
       }
 
       logger?.info('Service Process deleted successfully.');
     } catch (error) {
-      logger?.error('Delete operation failed: %s', error instanceof Error ? error.message : String(error));
+      logger?.error(`Delete operation failed: ${error instanceof Error ? error.message : String(error)}`);
+      const err = error as Error & { response?: unknown };
+      if (logger && err.response !== undefined) {
+        logger.debug(`Delete Service Process error full response: ${formatErrorResponseForLog(err.response)}`);
+      }
+      logger?.debug(`Delete Service Process failed in ${Date.now() - deleteStart}ms`);
       throw error;
     }
   }
@@ -269,7 +295,9 @@ export class RollbackService {
       return;
     }
 
-    logger?.info('Deleting %d deployed flow(s) via Tooling API...', flowsToDelete.length);
+    logger?.info(`Deleting ${flowsToDelete.length} deployed flow(s) via Tooling API...`);
+    logger?.debug(`Delete flows start: ${flowsToDelete.length} flow(s)`);
+    const deleteFlowsStart = Date.now();
 
     let successCount = 0;
     let failureCount = 0;
@@ -277,29 +305,36 @@ export class RollbackService {
     // Delete flows one by one (sequential for better error logging)
     // eslint-disable-next-line no-await-in-loop
     for (const flow of flowsToDelete) {
-      logger?.debug('Deleting flow: %s (InteractionDefinitionVersion ID: %s)', flow.fullName, flow.id);
+      logger?.debug(`Deleting flow: ${flow.fullName} (InteractionDefinitionVersion ID: ${flow.id})`);
       try {
         // eslint-disable-next-line no-await-in-loop
         const deleteResult = await connection.tooling.destroy('Flow', flow.id);
-        logger?.debug('Delete result for %s %o', flow.id, deleteResult);
+        logger?.debug(`Delete result for ${flow.id} full response: ${JSON.stringify(deleteResult)}`);
 
         if (deleteResult.success) {
-          logger?.debug('Successfully deleted %s', flow.fullName);
+          logger?.debug(`Successfully deleted ${flow.fullName}`);
           successCount++;
         } else {
           const errors = Array.isArray(deleteResult.errors)
             ? deleteResult.errors.join(', ')
             : JSON.stringify(deleteResult.errors);
-          logger?.warn('Failed to delete %s: %s', flow.fullName, errors);
+          logger?.warn(`Failed to delete ${flow.fullName}: ${errors}`);
           failureCount++;
         }
       } catch (error) {
-        logger?.error('Error deleting %s: %s', flow.fullName, error instanceof Error ? error.message : String(error));
+        logger?.error(`Error deleting ${flow.fullName}: ${error instanceof Error ? error.message : String(error)}`);
+        const err = error as Error & { response?: unknown };
+        if (logger && err.response !== undefined) {
+          logger.debug(`Delete flow ${flow.fullName} error full response: ${formatErrorResponseForLog(err.response)}`);
+        }
         failureCount++;
       }
     }
 
-    logger?.info('Flow deletion summary: %d succeeded, %d failed', successCount, failureCount);
+    const deleteFlowsDuration = Date.now() - deleteFlowsStart;
+    logger?.info(
+      `Flow deletion completed in ${deleteFlowsDuration}ms (${successCount} succeeded, ${failureCount} failed)`
+    );
     if (failureCount > 0) {
       throw new Error(`Failed to delete ${failureCount} flow(s) during rollback (${successCount} succeeded).`);
     }
