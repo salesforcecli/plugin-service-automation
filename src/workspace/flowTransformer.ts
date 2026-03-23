@@ -52,7 +52,7 @@ export class FlowTransformer {
   ): FlowTransformerResult {
     const absolutePath = path.resolve(flowFilePath);
     if (!fs.existsSync(absolutePath)) {
-      logger?.debug('Flow file not found: %s', absolutePath);
+      logger?.debug(`Flow file not found: ${absolutePath}`);
       return { modified: false, message: `Flow file not found: ${absolutePath}` };
     }
 
@@ -85,7 +85,7 @@ export class FlowTransformer {
     const output = String(builder.build(parsed as Record<string, unknown>));
     fs.writeFileSync(absolutePath, output, 'utf-8');
 
-    logger?.debug('Updated intake form flow for targetServiceProcessId=%s', targetServiceProcessId);
+    logger?.debug(`Updated intake form flow for targetServiceProcessId=${targetServiceProcessId}`);
 
     return {
       modified: true,
@@ -128,7 +128,7 @@ export class FlowTransformer {
   ): FlowTransformerResult {
     const absolutePath = path.resolve(flowFilePath);
     if (!fs.existsSync(absolutePath)) {
-      logger?.debug('Fulfillment flow file not found: %s', absolutePath);
+      logger?.debug(`Fulfillment flow file not found: ${absolutePath}`);
       return { modified: false, message: `Fulfillment flow file not found: ${absolutePath}` };
     }
 
@@ -166,8 +166,7 @@ export class FlowTransformer {
     logger?.debug('Set fulfillment flow status to Draft (ready for deployment).');
     if (targetServiceProcessId) {
       logger?.debug(
-        'Updated getSvcProcessDetails actionName/nameSegment to use Service Process id: %s',
-        targetServiceProcessId
+        `Updated getSvcProcessDetails actionName/nameSegment to use Service Process id: ${targetServiceProcessId}`
       );
     }
     return {
