@@ -1,5 +1,12 @@
 {
-  "test": {
-    "testsPath": "test/**/*.test.ts"
+  "wireit": {
+    "test:only": {
+      "command": "mocha \"test/**/*.test.ts\"",
+      "env": {
+        "FORCE_COLOR": "2"
+      },
+      "files": ["test/**/*.ts", "src/**/*.ts", "**/tsconfig.json", ".mocha*", "!*.nut.ts"],
+      "output": []
+    }
   }
 }
