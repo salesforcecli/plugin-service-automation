@@ -85,25 +85,21 @@ export default class ServiceProcessRetrieve extends SfCommand<ServiceProcessRetr
 
     const request: ServiceProcessRetrieveRequest = ServiceProcessRetrieve.serviceProcessRetrieveRequest(flags);
     logger.info(
-      'Retrieve started: serviceProcessId=%s, org=%s, apiVersion=%s, outputDir=%s',
-      flags['service-process-id'],
-      flags['target-org'].getUsername(),
-      flags['api-version'] ?? 'default',
-      flags['output-dir'] ?? process.cwd()
+      `Retrieve started: serviceProcessId=${flags['service-process-id']}, org=${
+        flags['target-org'].getUsername() ?? '(unknown)'
+      }, apiVersion=${flags['api-version'] ?? 'default'}, outputDir=${flags['output-dir'] ?? process.cwd()}`
     );
-    logger.debug('Run ID: %s', runId);
+    logger.debug(`Run ID: ${runId}`);
 
     if (!isApiVersionAtLeast(request.orgMetadata.apiVersion, MIN_SERVICE_PROCESS_API_VERSION)) {
-      logger.error(
-        'API version validation failed: %s',
-        getUnsupportedApiVersionMessage(request.orgMetadata.apiVersion, Boolean(flags['api-version']))
+      const unsupportedMsg = getUnsupportedApiVersionMessage(
+        request.orgMetadata.apiVersion,
+        Boolean(flags['api-version'])
       );
-      throw new SfError(
-        getUnsupportedApiVersionMessage(request.orgMetadata.apiVersion, Boolean(flags['api-version'])),
-        'UnsupportedApiVersion'
-      );
+      logger.error(`API version validation failed: ${unsupportedMsg}`);
+      throw new SfError(unsupportedMsg, 'UnsupportedApiVersion');
     }
-    logger.debug('API version validation passed: %s', request.orgMetadata.apiVersion);
+    logger.debug(`API version validation passed: ${request.orgMetadata.apiVersion}`);
 
     const connection = flags['target-org'].getConnection(flags['api-version']);
     logger.debug('Running preflight validation');
@@ -117,11 +113,11 @@ export default class ServiceProcessRetrieve extends SfCommand<ServiceProcessRetr
     let result;
     try {
       result = await retrieveServiceProcess(request, retrieveStages, logger);
-      logger.info('Retrieve completed successfully: zipFile=%s', result.zipFilePath);
+      logger.info(`Retrieve completed successfully: zipFile=${result.zipFilePath}`);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      logger.error('Retrieve failed: %s', errorMessage);
-      logger.debug('Retrieve failed (raw): %s', error instanceof Error ? error.stack ?? error.message : String(error));
+      logger.error(`Retrieve failed: ${errorMessage}`);
+      logger.debug(`Retrieve failed (raw): ${error instanceof Error ? error.stack ?? error.message : String(error)}`);
       if (!this.jsonEnabled()) {
         retrieveStages.stop();
       }

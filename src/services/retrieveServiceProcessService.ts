@@ -72,18 +72,18 @@ export async function retrieveServiceProcessDetails(
     ? `/services/data/v${apiVersion}/connect/service-automation/service-process/${serviceProcessId}`
     : `/connect/service-automation/service-process/${serviceProcessId}`;
 
-  logger?.debug('Fetching Service Process details from API: %s', url);
+  logger?.debug(`Fetching Service Process details from API: ${url}`);
 
   try {
     const serviceProcessData = await connection.requestGet<Record<string, unknown>>(url);
-    logger?.debug('Service Process API response received: %d fields', Object.keys(serviceProcessData).length);
+    logger?.debug(`Service Process API response received: ${Object.keys(serviceProcessData).length} fields`);
     const filtered = filteredServiceProcessData(serviceProcessData);
-    logger?.debug('Filtered Service Process data: %d supported fields', Object.keys(filtered).length);
+    logger?.debug(`Filtered Service Process data: ${Object.keys(filtered).length} supported fields`);
     return filtered;
   } catch (error) {
     const err = error as { errorCode?: string; data?: { errorCode?: string } };
     const errorCode = err?.errorCode ?? err?.data?.errorCode;
-    logger?.error('Service Process data retrieval failed: errorCode=%s', errorCode ?? 'unknown');
+    logger?.error(`Service Process data retrieval failed: errorCode=${errorCode ?? 'unknown'}`);
     if (errorCode === 'FUNCTIONALITY_NOT_ENABLED') {
       throw new SfError(
         'User does not have the required permissions to use this feature. Check with your admin.',
@@ -115,19 +115,19 @@ export async function extractServiceProcessDependencies(
 
   if (intakeForm) {
     const intakeFormType = (intakeForm.type as string | undefined) ?? 'Flow';
-    logger?.debug('Intake form type: %s', intakeFormType);
+    logger?.debug(`Intake form type: ${intakeFormType}`);
     if (intakeFormType === 'Flow') {
       const intakeFormApiName = intakeForm.apiName as string | undefined;
       const intakeFormNamespacePrefix = intakeForm.namespacePrefix as string | undefined;
 
       if (intakeFormApiName && !intakeFormNamespacePrefix) {
         flowApiNames.push(intakeFormApiName);
-        logger?.debug('Added intake flow to retrieve: %s', intakeFormApiName);
+        logger?.debug(`Added intake flow to retrieve: ${intakeFormApiName}`);
       } else if (intakeFormNamespacePrefix) {
         logger?.debug(
-          'Skipping namespaced intake flow: %s (namespace: %s)',
-          intakeFormApiName,
-          intakeFormNamespacePrefix
+          `Skipping namespaced intake flow: ${
+            intakeFormApiName ?? '(no api name)'
+          } (namespace: ${intakeFormNamespacePrefix})`
         );
       }
     }
@@ -140,12 +140,12 @@ export async function extractServiceProcessDependencies(
 
     if (fulfillmentFlowApiName && !fulfillmentFlowNamespacePrefix) {
       flowApiNames.push(fulfillmentFlowApiName);
-      logger?.debug('Added fulfillment flow to retrieve: %s', fulfillmentFlowApiName);
+      logger?.debug(`Added fulfillment flow to retrieve: ${fulfillmentFlowApiName}`);
     } else if (fulfillmentFlowNamespacePrefix) {
       logger?.debug(
-        'Skipping namespaced fulfillment flow: %s (namespace: %s)',
-        fulfillmentFlowApiName,
-        fulfillmentFlowNamespacePrefix
+        `Skipping namespaced fulfillment flow: ${
+          fulfillmentFlowApiName ?? '(no api name)'
+        } (namespace: ${fulfillmentFlowNamespacePrefix})`
       );
     }
   }
@@ -153,18 +153,18 @@ export async function extractServiceProcessDependencies(
   const flowMetadata: Array<{ apiName: string; xmlContent: string }> = [];
 
   if (flowApiNames.length > 0) {
-    logger?.info('Fetching %d flow(s): %s', flowApiNames.length, flowApiNames.join(', '));
+    logger?.info(`Fetching ${flowApiNames.length} flow(s): ${flowApiNames.join(', ')}`);
     const fetched = await fetchFlows(flowApiNames, connection, outputDir, logger);
     flowMetadata.push(...fetched);
 
     for (const flow of fetched) {
       if (intakeForm && flow.apiName === (intakeForm.apiName as string)) {
         serviceProcessDeps.intakeForm = flow.xmlContent;
-        logger?.debug('Stored intake form metadata for: %s', flow.apiName);
+        logger?.debug(`Stored intake form metadata for: ${flow.apiName}`);
       }
       if (fulfillmentFlow && flow.apiName === (fulfillmentFlow.apiName as string)) {
         serviceProcessDeps.fulfillmentForm = flow.xmlContent;
-        logger?.debug('Stored fulfillment flow metadata for: %s', flow.apiName);
+        logger?.debug(`Stored fulfillment flow metadata for: ${flow.apiName}`);
       }
     }
   } else {
@@ -246,7 +246,7 @@ export async function fetchFlows(
   }
 
   const tempRetrieveDir = join(outputDir, '.temp');
-  logger?.debug('Creating temporary directory for flow retrieval: %s', tempRetrieveDir);
+  logger?.debug(`Creating temporary directory for flow retrieval: ${tempRetrieveDir}`);
   await createTemporaryDirectory(tempRetrieveDir);
 
   try {
@@ -255,7 +255,7 @@ export async function fetchFlows(
       type: 'Flow',
     }));
     const componentSet = new ComponentSet(components);
-    logger?.debug('Retrieving %d flow(s) via Metadata API', flowApiNames.length);
+    logger?.debug(`Retrieving ${flowApiNames.length} flow(s) via Metadata API`);
     const retrieveResult = await componentSet.retrieve({
       usernameOrConnection: connection,
       output: tempRetrieveDir,
@@ -273,18 +273,18 @@ export async function fetchFlows(
         // eslint-disable-next-line no-await-in-loop
         const xmlContent = await readFile(flowXmlPath, 'utf-8');
         flowMetadata.push({ apiName, xmlContent });
-        logger?.debug('Flow metadata read: %s (%d bytes)', apiName, xmlContent.length);
+        logger?.debug(`Flow metadata read: ${apiName} (${xmlContent.length} bytes)`);
       } else {
-        logger?.error('Flow XML file not found: %s at %s', apiName, flowXmlPath);
+        logger?.error(`Flow XML file not found: ${apiName} at ${flowXmlPath}`);
         throw new Error(`Flow XML file not found for '${apiName}' at: ${flowXmlPath}`);
       }
     }
     return flowMetadata;
   } catch (error) {
-    logger?.error('Flow fetch failed: %s', error instanceof Error ? error.message : String(error));
+    logger?.error(`Flow fetch failed: ${error instanceof Error ? error.message : String(error)}`);
     throw new Error(`Failed to fetch flow metadata: ${error instanceof Error ? error.message : String(error)}`);
   } finally {
-    logger?.debug('Cleaning up temporary directory: %s', tempRetrieveDir);
+    logger?.debug(`Cleaning up temporary directory: ${tempRetrieveDir}`);
     await removeTemporaryDirectory(tempRetrieveDir, true);
   }
 }
@@ -306,13 +306,13 @@ async function generateDeploymentMetadata(
     const apiName = intakeForm.apiName as string;
     const namespace = (intakeForm.namespacePrefix as string | null) ?? null;
 
-    logger?.debug('Determining deployment intent for intake flow: %s (namespace: %s)', apiName, namespace ?? 'none');
+    logger?.debug(`Determining deployment intent for intake flow: ${apiName} (namespace: ${namespace ?? 'none'})`);
     // Query FlowRecord by ApiName+NamespacePrefix and determine deployment intent
     const flowIntent = await getFlowDeploymentIntentByName(connection, apiName, namespace, flowType);
 
     if (flowIntent) {
       deploymentMetadata.intakeFlow = flowIntent;
-      logger?.debug('Intake flow intent: %s', flowIntent.deploymentIntent);
+      logger?.debug(`Intake flow intent: ${flowIntent.deploymentIntent}`);
     } else {
       // Flow not found - default to deploy intent
       deploymentMetadata.intakeFlow = {
@@ -338,17 +338,16 @@ async function generateDeploymentMetadata(
     const namespace = (fulfillmentFlow.namespacePrefix as string | null) ?? null;
 
     logger?.debug(
-      'Determining deployment intent for fulfillment flow: %s (type: %s, namespace: %s)',
-      apiName,
-      flowType,
-      namespace ?? 'none'
+      `Determining deployment intent for fulfillment flow: ${apiName} (type: ${flowType}, namespace: ${
+        namespace ?? 'none'
+      })`
     );
     // Query FlowRecord/FlowOrchestration by ApiName+NamespacePrefix and determine deployment intent
     const flowIntent = await getFlowDeploymentIntentByName(connection, apiName, namespace, flowType);
 
     if (flowIntent) {
       deploymentMetadata.fulfillmentFlow = flowIntent;
-      logger?.debug('Fulfillment flow intent: %s', flowIntent.deploymentIntent);
+      logger?.debug(`Fulfillment flow intent: ${flowIntent.deploymentIntent}`);
     } else {
       // Flow not found - default to deploy intent
       deploymentMetadata.fulfillmentFlow = {
@@ -375,12 +374,12 @@ export async function generateZippedArtifacts(
   const zipFilePath = join(request.outputDir, zipFileName);
 
   retrieveStages?.startPhase('Generating consolidated package');
-  logger?.debug('Generating ZIP package: %s', zipFilePath);
+  logger?.debug(`Generating ZIP package: ${zipFilePath}`);
 
   const serviceProcessJson = JSON.stringify(serviceProcessData, null, 2);
   const zip = new JSZip();
   zip.file('templateData.json', serviceProcessJson);
-  logger?.debug('Added templateData.json to ZIP (%d bytes)', serviceProcessJson.length);
+  logger?.debug(`Added templateData.json to ZIP (${serviceProcessJson.length} bytes)`);
 
   // Single combined metadata file (org + service process flows)
   logger?.debug('Generating deployment metadata');
@@ -399,7 +398,7 @@ export async function generateZippedArtifacts(
   };
   const metadataJson = JSON.stringify(combinedMetadata, null, 2);
   zip.file('service-process.metadata.json', metadataJson);
-  logger?.debug('Added service-process.metadata.json to ZIP (%d bytes)', metadataJson.length);
+  logger?.debug(`Added service-process.metadata.json to ZIP (${metadataJson.length} bytes)`);
 
   const flowMetadataFolder = zip.folder('metadata')?.folder('flows');
 
@@ -424,9 +423,7 @@ export async function generateZippedArtifacts(
     const intakeFormXmlContent = serviceProcessDeps.intakeForm as string;
     flowMetadataFolder?.file(`${intakeFormApiName}.flow-meta.xml`, intakeFormXmlContent);
     logger?.debug(
-      'Added intake flow to ZIP: %s.flow-meta.xml (%d bytes)',
-      intakeFormApiName,
-      intakeFormXmlContent.length
+      `Added intake flow to ZIP: ${intakeFormApiName}.flow-meta.xml (${intakeFormXmlContent.length} bytes)`
     );
   }
 
@@ -434,16 +431,14 @@ export async function generateZippedArtifacts(
     const fulfillmentFormXmlContent = serviceProcessDeps.fulfillmentForm as string;
     flowMetadataFolder?.file(`${fulfillmentFlowApiName}.flow-meta.xml`, fulfillmentFormXmlContent);
     logger?.debug(
-      'Added fulfillment flow to ZIP: %s.flow-meta.xml (%d bytes)',
-      fulfillmentFlowApiName,
-      fulfillmentFormXmlContent.length
+      `Added fulfillment flow to ZIP: ${fulfillmentFlowApiName}.flow-meta.xml (${fulfillmentFormXmlContent.length} bytes)`
     );
   }
 
   retrieveStages?.succeedPhase('Generating consolidated package');
   retrieveStages?.startPhase('Creating ZIP archive');
 
-  logger?.debug('Writing ZIP file to disk: %s', zipFilePath);
+  logger?.debug(`Writing ZIP file to disk: ${zipFilePath}`);
   await createZipFile(zipFilePath, zip);
   logger?.debug('ZIP file created successfully');
 
@@ -543,10 +538,10 @@ export async function retrieveServiceProcess(
 
     const effectiveVersion = request.orgMetadata.apiVersion;
     if (!isApiVersionAtLeast(effectiveVersion, MIN_SERVICE_PROCESS_API_VERSION)) {
-      logger?.error('API version validation failed: %s', effectiveVersion);
+      logger?.error(`API version validation failed: ${effectiveVersion}`);
       throw new SfError(getUnsupportedApiVersionMessage(effectiveVersion), 'UnsupportedApiVersion');
     }
-    logger?.debug('API version validated: %s', effectiveVersion);
+    logger?.debug(`API version validated: ${effectiveVersion}`);
 
     await validateRequest(request);
     logger?.debug('Request validation completed');
@@ -554,7 +549,7 @@ export async function retrieveServiceProcess(
 
     retrieveStages?.startPhase('Fetching Service Process');
     currentPhase = 'Fetching Service Process';
-    logger?.info('Fetching Service Process: id=%s', request.serviceProcessId);
+    logger?.info(`Fetching Service Process: id=${request.serviceProcessId}`);
     const serviceProcessData = await retrieveServiceProcessDetails(
       request.serviceProcessId,
       request.connection,
@@ -564,7 +559,7 @@ export async function retrieveServiceProcess(
     const name = (serviceProcessData.name as string) ?? 'Unknown';
     const recordId = (serviceProcessData.id as string) ?? request.serviceProcessId;
     const productCode = serviceProcessData.productCode != null ? String(serviceProcessData.productCode) : undefined;
-    logger?.debug('Service Process fetched: name=%s, id=%s', name, recordId);
+    logger?.debug(`Service Process fetched: name=${name}, id=${recordId}`);
     retrieveStages?.setServiceProcessDetails(name, recordId, productCode);
     retrieveStages?.succeedPhase('Fetching Service Process');
 
@@ -573,10 +568,7 @@ export async function retrieveServiceProcess(
     logger?.debug('Resolving related components');
     const counts = getResolvingCounts(serviceProcessData);
     logger?.debug(
-      'Related components: preprocessors=%d, intakeFlow=%d, fulfillmentFlow=%d',
-      counts.preprocessors,
-      counts.intakeFlow,
-      counts.fulfillmentFlow
+      `Related components: preprocessors=${counts.preprocessors}, intakeFlow=${counts.intakeFlow}, fulfillmentFlow=${counts.fulfillmentFlow}`
     );
     retrieveStages?.setResolvingCounts(counts.preprocessors, counts.intakeFlow, counts.fulfillmentFlow);
     retrieveStages?.succeedPhase('Resolving related components');
@@ -590,12 +582,12 @@ export async function retrieveServiceProcess(
       request.outputDir,
       logger
     );
-    logger?.debug('Retrieved %d flow metadata file(s)', flowMetadata.length);
+    logger?.debug(`Retrieved ${flowMetadata.length} flow metadata file(s)`);
     const retrievingLines = getRetrievingMetadataLines(serviceProcessData, flowMetadata);
     retrieveStages?.setRetrievingMetadataLines(retrievingLines);
     retrieveStages?.succeedPhase('Retrieving metadata');
 
-    logger?.debug('Ensuring output directory exists: %s', request.outputDir);
+    logger?.debug(`Ensuring output directory exists: ${request.outputDir}`);
     await ensureDirectoryExists(request.outputDir);
 
     currentPhase = 'Generating consolidated package';
@@ -607,7 +599,7 @@ export async function retrieveServiceProcess(
       retrieveStages,
       logger
     );
-    logger?.debug('ZIP file created: %s', zipFilePath);
+    logger?.debug(`ZIP file created: ${zipFilePath}`);
 
     retrieveStages?.startPhase('Done');
     currentPhase = 'Done';
@@ -615,17 +607,15 @@ export async function retrieveServiceProcess(
     retrieveStages?.stop();
 
     const duration = Date.now() - startTime;
-    logger?.info('Retrieve completed successfully in %dms', duration);
+    logger?.info(`Retrieve completed successfully in ${duration}ms`);
 
     const result = buildRetrieveResult(request, serviceProcessData, flowMetadata, zipFilePath);
     return { zipFilePath, result };
   } catch (error) {
     logger?.error(
-      'Retrieve failed in phase "%s": %s',
-      currentPhase,
-      error instanceof Error ? error.message : String(error)
+      `Retrieve failed in phase "${currentPhase}": ${error instanceof Error ? error.message : String(error)}`
     );
-    logger?.debug('Retrieve failed (raw): %s', error instanceof Error ? error.stack ?? error.message : String(error));
+    logger?.debug(`Retrieve failed (raw): ${error instanceof Error ? error.stack ?? error.message : String(error)}`);
     retrieveStages?.failPhase(currentPhase, error instanceof Error ? error : new Error(String(error)));
     throw error;
   }
