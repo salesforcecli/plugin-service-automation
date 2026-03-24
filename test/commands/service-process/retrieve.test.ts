@@ -17,16 +17,23 @@ import { TestContext } from '@salesforce/core/testSetup';
 import { Connection } from '@salesforce/core';
 import { expect } from 'chai';
 import { stubSfCommandUx } from '@salesforce/sf-plugins-core';
+import type { SinonStub } from 'sinon';
 import { PreflightValidator } from '../../../src/validation/PreflightValidator.js';
+import { MaxApiVersionValidator } from '../../../src/validation/validators/MaxApiVersionValidator.js';
 import ServiceProcessRetrieve from '../../../src/commands/service-process/retrieve.js';
 
 describe('service-process retrieve', () => {
   const $$ = new TestContext();
+  let maxApiValidatorStub: SinonStub;
 
   beforeEach(() => {
     stubSfCommandUx($$.SANDBOX);
     $$.SANDBOX.stub(Connection.prototype, 'getApiVersion').returns('67.0');
     $$.SANDBOX.stub(PreflightValidator, 'validate').resolves();
+    maxApiValidatorStub = $$.SANDBOX.stub(MaxApiVersionValidator, 'validate').resolves({
+      name: 'MaxApiVersion',
+      status: 'PASS' as const,
+    });
   });
 
   afterEach(() => {
@@ -64,5 +71,27 @@ describe('service-process retrieve', () => {
     expect(result.files[0]).to.have.property('name');
     expect(result.files[0]).to.have.property('type');
     expect(result.files[0]).to.have.property('filePath');
+  });
+
+  it('fails when --api-version is above org max', async () => {
+    maxApiValidatorStub.resolves({
+      name: 'MaxApiVersion',
+      status: 'FAIL' as const,
+      message: 'Invalid --api-version 67.0. Maximum API version supported by org is 66.0.',
+    });
+    try {
+      await ServiceProcessRetrieve.run([
+        '--service-process-id',
+        '01txx0000008ABC',
+        '--target-org',
+        'test@org.com',
+        '--api-version',
+        '67.0',
+      ]);
+      expect.fail('Expected command to throw');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      expect(message).to.include('Maximum API version supported by org is 66.0');
+    }
   });
 });

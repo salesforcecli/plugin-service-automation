@@ -67,6 +67,16 @@ describe('errorFormatter', () => {
       expect(msg).to.include('•');
       expect(msg).to.include('v65.0');
     });
+
+    it('includes generic link hint for duplicate flow failures', () => {
+      const err = new ValidationError('Failed', [
+        { name: 'IntakeFlowUniqueness', status: 'FAIL', message: "Flow 'abcd' already exists in target org" },
+      ]);
+      const msg = getValidationErrorMessage(err);
+      expect(msg).to.include('Duplicate flows found in target org');
+      expect(msg).to.include('--link-intake');
+      expect(msg).to.include('--link-fulfillment');
+    });
   });
 
   describe('formatValidationErrorAsItems', () => {
@@ -80,8 +90,12 @@ describe('errorFormatter', () => {
         { name: 'IntakeFlowUniqueness', status: 'FAIL', message: "Flow 'MyFlow' already exists" },
       ]);
       const items = formatValidationErrorAsItems(err);
-      expect(items).to.have.lengthOf(1);
+      expect(items).to.have.lengthOf(2);
       expect(items[0].value).to.include('MyFlow');
+      expect(items[1]).to.deep.equal({
+        label: 'Tip',
+        value: 'Use --link-intake and/or --link-fulfillment to link existing flows.',
+      });
     });
   });
 
@@ -106,16 +120,20 @@ describe('errorFormatter', () => {
       ]);
       const lines = formatValidationError(err, false);
       expect(lines.some((l) => l.includes('Duplicate flows found'))).to.be.true;
+      expect(lines.some((l) => l.includes('--link-intake') && l.includes('--link-fulfillment'))).to.be.true;
       expect(lines.some((l) => l.includes('Deployment aborted'))).to.be.true;
     });
   });
 
   describe('getFormattedMessageForLog', () => {
     it('returns ValidationError formatted when err is ValidationError with failures', () => {
-      const err = new ValidationError('Failed', [{ name: 'MinApiVersion', status: 'FAIL', message: 'v65' }]);
+      const err = new ValidationError('Failed', [
+        { name: 'IntakeFlowUniqueness', status: 'FAIL', message: "Flow 'MyFlow' already exists" },
+      ]);
       const msg = getFormattedMessageForLog(err);
-      expect(msg).to.include('API version');
-      expect(msg).to.include('v65');
+      expect(msg).to.include('Duplicate flows found');
+      expect(msg).to.include('--link-intake');
+      expect(msg).to.include('--link-fulfillment');
     });
 
     it('returns error.message when err is plain Error', () => {

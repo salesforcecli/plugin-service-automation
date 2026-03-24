@@ -158,6 +158,10 @@ export function formatValidationErrorAsItems(error: ValidationError): Array<{ la
   const duplicateFlows = categorized.get(ErrorCategory.DuplicateFlows);
   if (duplicateFlows?.length) {
     items.push(...formatDuplicateFlows(duplicateFlows));
+    items.push({
+      label: 'Tip',
+      value: 'Use --link-intake and/or --link-fulfillment to link existing flows.',
+    });
   }
 
   const missingDeps = categorized.get(ErrorCategory.MissingDependencies);
@@ -348,6 +352,7 @@ function formatDuplicateFlowsSection(failures: ValidationResult[], lines: string
       lines.push(`  (${failure.name}: ${failure.message ?? failure.status})`);
     }
   }
+  lines.push('Tip: use --link-intake and/or --link-fulfillment to link existing flows.');
 }
 
 /**

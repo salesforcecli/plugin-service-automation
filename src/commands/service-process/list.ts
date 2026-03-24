@@ -19,6 +19,7 @@ import { Messages, SfError, Logger } from '@salesforce/core';
 import { InsufficientAccessError } from '../../errors.js';
 import { PreflightValidator } from '../../validation/PreflightValidator.js';
 import { MinApiVersionValidator } from '../../validation/validators/MinApiVersionValidator.js';
+import { MaxApiVersionValidator } from '../../validation/validators/MaxApiVersionValidator.js';
 import type { ValidationContext } from '../../validation/types.js';
 
 Messages.importMessagesDirectoryFromMetaUrl(import.meta.url);
@@ -58,25 +59,28 @@ export default class ServiceProcessList extends SfCommand<ServiceProcessListResu
     const logger = await Logger.child('service-process-list', { runId });
 
     const connection = flags['target-org'].getConnection(flags['api-version']);
-    logger.info(
-      'List started: org=%s, apiVersion=%s, limit=%d',
-      flags['target-org'].getUsername(),
-      flags['api-version'] ?? 'default',
-      flags.limit
-    );
-    logger.debug('Run ID: %s', runId);
+    const apiVersion = flags['api-version'] ?? 'default';
+    const orgUsername = flags['target-org'].getUsername() ?? 'unknown';
+    logger.info(`List started: org=${orgUsername}, apiVersion=${apiVersion}, limit=${flags.limit}`);
+    logger.debug(`Run ID: ${runId}`);
 
     const minApiContext: ValidationContext = {
       conn: connection,
       expectedApiVersion: flags['api-version'],
     };
-    logger.debug('Validating minimum API version');
+    logger.debug(`Validating API version constraints: requested=${apiVersion}`);
     const minApiResult = await MinApiVersionValidator.validate(minApiContext);
     if (minApiResult.status === 'FAIL' && minApiResult.message) {
-      logger.error('API version validation failed: %s', minApiResult.message);
+      logger.error(`Min API version validation failed: ${minApiResult.message}`);
       throw new SfError(minApiResult.message, 'UnsupportedApiVersion');
     }
-    logger.debug('API version validation passed');
+    logger.debug(`Min API version validation passed: ${minApiResult.message ?? 'OK'}`);
+    const maxApiResult = await MaxApiVersionValidator.validate(minApiContext);
+    if (maxApiResult.status === 'FAIL' && maxApiResult.message) {
+      logger.error(`Max API version validation failed: ${maxApiResult.message}`);
+      throw new SfError(maxApiResult.message, 'UnsupportedApiVersion');
+    }
+    logger.debug(`Max API version validation passed: ${maxApiResult.message ?? 'OK'}`);
 
     logger.debug('Running preflight validation');
     await PreflightValidator.validate(connection, flags['target-org']);
@@ -87,15 +91,15 @@ export default class ServiceProcessList extends SfCommand<ServiceProcessListResu
       const count = await connection.query<{ count: number }>(
         "SELECT COUNT() FROM Product2 WHERE UsedFor = 'ServiceProcess'"
       );
-      logger.debug('Total Service Processes in org: %d', count.totalSize);
+      logger.debug(`Total Service Processes in org: ${count.totalSize}`);
 
-      logger.debug('Querying Service Process records (limit: %d)', flags.limit);
+      logger.debug(`Querying Service Process records (limit: ${flags.limit})`);
       const result = await connection.query<{ Name: string; Id: string; Description?: string; IsActive: boolean }>(
         `SELECT Id, Name, Description, IsActive FROM Product2 WHERE UsedFor = 'ServiceProcess' ORDER BY Name LIMIT ${flags.limit}`
       );
 
       const serviceProcessList = result.records;
-      logger.debug('Retrieved %d Service Process record(s)', serviceProcessList.length);
+      logger.debug(`Retrieved ${serviceProcessList.length} Service Process record(s)`);
 
       this.table({
         data: serviceProcessList.map((record) => ({
@@ -112,7 +116,7 @@ export default class ServiceProcessList extends SfCommand<ServiceProcessListResu
       });
 
       this.log(`\u2714 Displayed ${result.totalSize} of ${count.totalSize} Service Processes\n`);
-      logger.info('List completed successfully: displayed=%d, total=%d', result.totalSize, count.totalSize);
+      logger.info(`List completed successfully: displayed=${result.totalSize}, total=${count.totalSize}`);
 
       return {
         serviceProcesses: serviceProcessList.map((record) => ({
@@ -126,15 +130,14 @@ export default class ServiceProcessList extends SfCommand<ServiceProcessListResu
       };
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : String(err);
-      logger.error('List failed: %s', errorMessage);
-      logger.debug('List failed (raw): %s', err instanceof Error ? err.stack ?? err.message : String(err));
+      logger.error(`List failed: ${errorMessage}`);
+      logger.debug(`List failed (raw): ${err instanceof Error ? err.stack ?? err.message : String(err)}`);
 
       const isUsedForColumnError = errorMessage.includes("No such column 'UsedFor' on entity");
       const isProduct2NotIdentified = errorMessage.includes("sObject type 'Product2' is not supported.");
       if (isUsedForColumnError || isProduct2NotIdentified) {
         logger.debug(
-          'Permission error detected: %s',
-          isUsedForColumnError ? 'UsedFor column missing' : 'Product2 not supported'
+          `Permission error detected: ${isUsedForColumnError ? 'UsedFor column missing' : 'Product2 not supported'}`
         );
         throw new InsufficientAccessError(
           'User does not have required permissions to fetch service processes. Please check with your admin.'

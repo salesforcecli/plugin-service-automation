@@ -92,13 +92,13 @@ sf service-process retrieve -i <value> -o <value> [--api-version <value>] [-d <v
 
 **FLAGS**
 
-| Short | Flag                         | Description                                                                               |
-| ----- | ---------------------------- | ----------------------------------------------------------------------------------------- |
-| -i    | --service-process-id=<value> | (required) ID of the Unified Catalog Service Process to retrieve.                         |
-| -o    | --target-org=<value>         | (required) Username or alias of the target org. Not required if `target-org` is set.      |
-| -d    | --output-dir=<value>         | Directory to write retrieved artifacts. Default: `./service-process/<service-process-id>` |
-|       | --api-version=<value>        | Override the API version used for requests.                                               |
-|       | --json                       | Format output as JSON.                                                                    |
+| Short | Flag                         | Description                                                                          |
+| ----- | ---------------------------- | ------------------------------------------------------------------------------------ |
+| -i    | --service-process-id=<value> | (required) ID of the Unified Catalog Service Process to retrieve.                    |
+| -o    | --target-org=<value>         | (required) Username or alias of the target org. Not required if `target-org` is set. |
+| -d    | --output-dir=<value>         | Directory to write retrieved artifacts. Default: `./service-process`                 |
+|       | --api-version=<value>        | Override the API version used for requests.                                          |
+|       | --json                       | Format output as JSON.                                                               |
 
 **EXAMPLES**
 

@@ -22,15 +22,13 @@ import { DeployService } from '../../services/deployserviceprocess.js';
 import { DeploymentStages } from '../../utils/deploymentStages.js';
 import type { DeploymentSummary } from '../../utils/deploymentStages.js';
 import { getFormattedMessageForLog, getValidationErrorMessage } from '../../utils/errorFormatter.js';
-import {
-  MIN_SERVICE_PROCESS_API_VERSION,
-  isApiVersionAtLeast,
-  getUnsupportedApiVersionMessage,
-} from '../../utils/apiVersion.js';
 import { formatSuccessJsonOutput, formatFailureJsonOutput } from '../../utils/deployJsonFormatter.js';
 import type { DeployJsonOutput } from '../../types/jsonOutput.js';
 import type { DeploymentContext } from '../../services/deploymentContext.js';
 import { PreflightValidator } from '../../validation/PreflightValidator.js';
+import { MaxApiVersionValidator } from '../../validation/validators/MaxApiVersionValidator.js';
+import { MinApiVersionValidator } from '../../validation/validators/MinApiVersionValidator.js';
+import type { ValidationContext } from '../../validation/types.js';
 
 Messages.importMessagesDirectoryFromMetaUrl(import.meta.url);
 const messages = Messages.loadMessages('@salesforce/plugin-service-automation', 'service-process.deploy');
@@ -77,6 +75,8 @@ export default class ServiceProcessDeploy extends SfCommand<ServiceProcessDeploy
 
   public async run(): Promise<ServiceProcessDeployResult> {
     const { flags } = await this.parse(ServiceProcessDeploy);
+    const runId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+    const logger = await Logger.child('service-process-deploy', { runId });
     const inputZipRaw = flags['input-zip'];
     const inputZip = typeof inputZipRaw === 'string' ? inputZipRaw : inputZipRaw?.[0];
     if (inputZip == null || inputZip === '') {
@@ -85,19 +85,31 @@ export default class ServiceProcessDeploy extends SfCommand<ServiceProcessDeploy
 
     const apiVersion = flags['api-version'];
     const connection = flags['target-org'].getConnection(apiVersion);
-    const effectiveApiVersion = apiVersion ?? connection.getApiVersion();
-    if (!isApiVersionAtLeast(effectiveApiVersion, MIN_SERVICE_PROCESS_API_VERSION)) {
-      throw new SfError(
-        getUnsupportedApiVersionMessage(effectiveApiVersion, Boolean(apiVersion)),
-        'UnsupportedApiVersion'
-      );
+    const apiContext: ValidationContext = {
+      conn: connection,
+      expectedApiVersion: flags['api-version'],
+    };
+    logger.info(
+      `Deploy started: inputZip=${inputZip}, org=${flags['target-org'].getUsername() ?? '(unknown)'}, apiVersion=${
+        flags['api-version'] ?? 'default'
+      }`
+    );
+    logger.debug(`Run ID: ${runId}`);
+    logger.debug(`Validating API version constraints: requested=${flags['api-version'] ?? 'default'}`);
+    const minApiResult = await MinApiVersionValidator.validate(apiContext);
+    if (minApiResult.status === 'FAIL' && minApiResult.message) {
+      logger.error(`Min API version validation failed: ${minApiResult.message}`);
+      throw new SfError(minApiResult.message, 'UnsupportedApiVersion');
     }
-
-    const runId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-    const logger = await Logger.child('service-process-deploy', { runId });
+    logger.debug(`Min API version validation passed: ${minApiResult.message ?? 'OK'}`);
+    const maxApiResult = await MaxApiVersionValidator.validate(apiContext);
+    if (maxApiResult.status === 'FAIL' && maxApiResult.message) {
+      logger.error(`Max API version validation failed: ${maxApiResult.message}`);
+      throw new SfError(maxApiResult.message, 'UnsupportedApiVersion');
+    }
+    logger.debug(`Max API version validation passed: ${maxApiResult.message ?? 'OK'}`);
     await PreflightValidator.validate(connection, flags['target-org'], logger);
     logger.debug('Preflight check passed');
-    logger.info(`Deploy started: inputZip=${inputZip}`);
     const deployApiVersion = flags['api-version'];
     const deployStages = new DeploymentStages(
       this,

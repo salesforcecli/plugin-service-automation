@@ -25,7 +25,7 @@ ID of the Unified Catalog Service Process to retrieve from the source org.
 
 # flags.output-dir.summary
 
-Directory where the retrieved Service Process artifacts and the generated ZIP file are written. If not specified, artifacts are written to the default directory.
+Directory where the retrieved Service Process artifacts and the generated ZIP file are written. If not specified, artifacts are written to `./service-process`.
 
 # examples
 

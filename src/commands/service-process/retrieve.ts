@@ -19,13 +19,11 @@ import { SfCommand, Flags } from '@salesforce/sf-plugins-core';
 import { Messages, Org, SfError, Logger } from '@salesforce/core';
 import { retrieveServiceProcess, type RetrieveResult } from '../../services/retrieveServiceProcessService.js';
 import { ServiceProcessRetrieveRequest, OrgMetadata } from '../../types/types.js';
-import {
-  MIN_SERVICE_PROCESS_API_VERSION,
-  isApiVersionAtLeast,
-  getUnsupportedApiVersionMessage,
-} from '../../utils/apiVersion.js';
 import { RetrieveStages } from '../../utils/retrieveStages.js';
 import { PreflightValidator } from '../../validation/PreflightValidator.js';
+import { MaxApiVersionValidator } from '../../validation/validators/MaxApiVersionValidator.js';
+import { MinApiVersionValidator } from '../../validation/validators/MinApiVersionValidator.js';
+import type { ValidationContext } from '../../validation/types.js';
 
 Messages.importMessagesDirectoryFromMetaUrl(import.meta.url);
 const messages = Messages.loadMessages('@salesforce/plugin-service-automation', 'service-process.retrieve');
@@ -56,7 +54,7 @@ export default class ServiceProcessRetrieve extends SfCommand<ServiceProcessRetr
 
   private static serviceProcessRetrieveRequest(flags: Record<string, unknown>): ServiceProcessRetrieveRequest {
     const serviceProcessId = flags['service-process-id'] as string;
-    const outputDir = resolve((flags['output-dir'] as string | undefined) ?? process.cwd());
+    const outputDir = resolve((flags['output-dir'] as string | undefined) ?? 'service-process');
     const org = flags['target-org'] as Org;
     const apiVersion = flags['api-version'] as string | undefined;
     const connection = org.getConnection(apiVersion);
@@ -90,16 +88,23 @@ export default class ServiceProcessRetrieve extends SfCommand<ServiceProcessRetr
       }, apiVersion=${flags['api-version'] ?? 'default'}, outputDir=${flags['output-dir'] ?? process.cwd()}`
     );
     logger.debug(`Run ID: ${runId}`);
-
-    if (!isApiVersionAtLeast(request.orgMetadata.apiVersion, MIN_SERVICE_PROCESS_API_VERSION)) {
-      const unsupportedMsg = getUnsupportedApiVersionMessage(
-        request.orgMetadata.apiVersion,
-        Boolean(flags['api-version'])
-      );
-      logger.error(`API version validation failed: ${unsupportedMsg}`);
-      throw new SfError(unsupportedMsg, 'UnsupportedApiVersion');
+    const apiContext: ValidationContext = {
+      conn: request.connection,
+      expectedApiVersion: flags['api-version'],
+    };
+    logger.debug(`Validating API version constraints: requested=${flags['api-version'] ?? 'default'}`);
+    const minApiResult = await MinApiVersionValidator.validate(apiContext);
+    if (minApiResult.status === 'FAIL' && minApiResult.message) {
+      logger.error(`Min API version validation failed: ${minApiResult.message}`);
+      throw new SfError(minApiResult.message, 'UnsupportedApiVersion');
     }
-    logger.debug(`API version validation passed: ${request.orgMetadata.apiVersion}`);
+    logger.debug(`Min API version validation passed: ${minApiResult.message ?? 'OK'}`);
+    const maxApiResult = await MaxApiVersionValidator.validate(apiContext);
+    if (maxApiResult.status === 'FAIL' && maxApiResult.message) {
+      logger.error(`Max API version validation failed: ${maxApiResult.message}`);
+      throw new SfError(maxApiResult.message, 'UnsupportedApiVersion');
+    }
+    logger.debug(`Max API version validation passed: ${maxApiResult.message ?? 'OK'}`);
 
     const connection = flags['target-org'].getConnection(flags['api-version']);
     logger.debug('Running preflight validation');
@@ -122,6 +127,9 @@ export default class ServiceProcessRetrieve extends SfCommand<ServiceProcessRetr
         retrieveStages.stop();
       }
       throw error;
+    }
+    if (!this.jsonEnabled()) {
+      this.log(`ZIP created at: ${result.zipFilePath}\n`);
     }
     return result.result;
   }

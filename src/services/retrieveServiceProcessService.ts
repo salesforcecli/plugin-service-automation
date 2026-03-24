@@ -21,11 +21,6 @@ import { Connection, SfError, type Logger } from '@salesforce/core';
 import { ComponentSet } from '@salesforce/source-deploy-retrieve';
 import JSZip from 'jszip';
 import { ServiceProcessDataRetrievalFailure } from '../errors.js';
-import {
-  MIN_SERVICE_PROCESS_API_VERSION,
-  isApiVersionAtLeast,
-  getUnsupportedApiVersionMessage,
-} from '../utils/apiVersion.js';
 import { validateRequest } from '../validation/validators/retrieveServiceProcessRequestValidator.js';
 import { ServiceProcessRetrieveRequest } from '../types/types.js';
 import { getFlowDeploymentIntentByName } from '../utils/flow/flowMetadata.js';
@@ -535,13 +530,6 @@ export async function retrieveServiceProcess(
     retrieveStages?.startPhase('Validating Request');
     currentPhase = 'Validating Request';
     logger?.debug('Starting validation phase');
-
-    const effectiveVersion = request.orgMetadata.apiVersion;
-    if (!isApiVersionAtLeast(effectiveVersion, MIN_SERVICE_PROCESS_API_VERSION)) {
-      logger?.error(`API version validation failed: ${effectiveVersion}`);
-      throw new SfError(getUnsupportedApiVersionMessage(effectiveVersion), 'UnsupportedApiVersion');
-    }
-    logger?.debug(`API version validated: ${effectiveVersion}`);
 
     await validateRequest(request);
     logger?.debug('Request validation completed');
