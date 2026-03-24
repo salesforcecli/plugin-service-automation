@@ -96,10 +96,9 @@ export default class ServiceProcessDeploy extends SfCommand<ServiceProcessDeploy
       throw new SfError(maxApiResult.message, 'UnsupportedApiVersion');
     }
 
-    await PreflightValidator.validate(connection, flags['target-org']);
-
     const runId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
     const logger = await Logger.child('service-process-deploy', { runId });
+    await PreflightValidator.validate(connection, flags['target-org'], logger);
     logger.debug('Preflight check passed');
     logger.info(`Deploy started: inputZip=${inputZip}`);
     const deployApiVersion = flags['api-version'];

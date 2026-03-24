@@ -16,7 +16,7 @@
 
 import { resolve } from 'node:path';
 import { SfCommand, Flags } from '@salesforce/sf-plugins-core';
-import { Messages, Org, SfError } from '@salesforce/core';
+import { Messages, Org, SfError, Logger } from '@salesforce/core';
 import { retrieveServiceProcess, type RetrieveResult } from '../../services/retrieveServiceProcessService.js';
 import { ServiceProcessRetrieveRequest, OrgMetadata } from '../../types/types.js';
 import { RetrieveStages } from '../../utils/retrieveStages.js';
@@ -76,30 +76,51 @@ export default class ServiceProcessRetrieve extends SfCommand<ServiceProcessRetr
 
   public async run(): Promise<ServiceProcessRetrieveResult> {
     const { flags } = await this.parse(ServiceProcessRetrieve);
+
+    // Create child logger for debug output
+    const runId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+    const logger = await Logger.child('service-process-retrieve', { runId });
+
     const request: ServiceProcessRetrieveRequest = ServiceProcessRetrieve.serviceProcessRetrieveRequest(flags);
+    logger.info(
+      `Retrieve started: serviceProcessId=${flags['service-process-id']}, org=${
+        flags['target-org'].getUsername() ?? '(unknown)'
+      }, apiVersion=${flags['api-version'] ?? 'default'}, outputDir=${flags['output-dir'] ?? process.cwd()}`
+    );
+    logger.debug(`Run ID: ${runId}`);
     const apiContext: ValidationContext = {
       conn: request.connection,
       expectedApiVersion: flags['api-version'],
     };
     const minApiResult = await MinApiVersionValidator.validate(apiContext);
     if (minApiResult.status === 'FAIL' && minApiResult.message) {
+      logger.error(`Min API version validation failed: ${minApiResult.message}`);
       throw new SfError(minApiResult.message, 'UnsupportedApiVersion');
     }
     const maxApiResult = await MaxApiVersionValidator.validate(apiContext);
     if (maxApiResult.status === 'FAIL' && maxApiResult.message) {
+      logger.error(`Max API version validation failed: ${maxApiResult.message}`);
       throw new SfError(maxApiResult.message, 'UnsupportedApiVersion');
     }
+    logger.debug(`API version validation passed: ${request.orgMetadata.apiVersion}`);
 
     const connection = flags['target-org'].getConnection(flags['api-version']);
+    logger.debug('Running preflight validation');
     await PreflightValidator.validate(connection, flags['target-org']);
+    logger.debug('Preflight validation passed');
+
     const orgUrl = request.connection.instanceUrl;
     const retrieveStages = new RetrieveStages(this, 'Service Process Retrieval', orgUrl);
     retrieveStages.start();
 
     let result;
     try {
-      result = await retrieveServiceProcess(request, retrieveStages);
+      result = await retrieveServiceProcess(request, retrieveStages, logger);
+      logger.info(`Retrieve completed successfully: zipFile=${result.zipFilePath}`);
     } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logger.error(`Retrieve failed: ${errorMessage}`);
+      logger.debug(`Retrieve failed (raw): ${error instanceof Error ? error.stack ?? error.message : String(error)}`);
       if (!this.jsonEnabled()) {
         retrieveStages.stop();
       }

@@ -19,6 +19,7 @@ import * as path from 'node:path';
 import type { Org, Connection } from '@salesforce/core';
 import type { Logger } from '@salesforce/core';
 import { ComponentSet } from '@salesforce/source-deploy-retrieve';
+import { safeStringifyForLog } from '../safeStringify.js';
 
 export type DeployFlowsOptions = {
   /** When true, validates deployment without committing (dry run). Default false. */
@@ -109,6 +110,11 @@ export async function deployFlows(
 
   const componentSet = ComponentSet.fromSource(filePaths);
 
+  if (logger) {
+    logger.debug(`Flow deploy start: ${filePaths.length} flow file(s), checkOnly=${checkOnly}`);
+  }
+  const deployStart = Date.now();
+
   const deploy = await componentSet.deploy({
     usernameOrConnection: connection,
     apiOptions: {
@@ -119,13 +125,19 @@ export async function deployFlows(
   });
 
   const result = await deploy.pollStatus();
+  const duration = Date.now() - deployStart;
 
   if (logger) {
-    logger.debug('Deploy response %o', result.response);
+    logger.debug(`Flow deploy full response: ${safeStringifyForLog(result.response)}`);
+    logger.debug(`Flow deploy completed in ${duration}ms`);
   }
 
   const status = result.response.status as string;
   if (status !== 'Succeeded') {
+    if (logger) {
+      logger.debug(`Flow deploy failed in ${duration}ms`);
+      logger.debug(`Flow deploy failed full response: ${safeStringifyForLog(result.response)}`);
+    }
     const message = getDeployErrorMessage(result.response as DeployResponse);
     throw new Error(`Flow deployment failed: ${message}`);
   }
