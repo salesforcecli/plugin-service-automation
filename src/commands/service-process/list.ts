@@ -68,18 +68,19 @@ export default class ServiceProcessList extends SfCommand<ServiceProcessListResu
       conn: connection,
       expectedApiVersion: flags['api-version'],
     };
-    logger.debug('Validating minimum API version');
+    logger.debug(`Validating API version constraints: requested=${apiVersion}`);
     const minApiResult = await MinApiVersionValidator.validate(minApiContext);
     if (minApiResult.status === 'FAIL' && minApiResult.message) {
-      logger.error(`API version validation failed: ${minApiResult.message}`);
+      logger.error(`Min API version validation failed: ${minApiResult.message}`);
       throw new SfError(minApiResult.message, 'UnsupportedApiVersion');
     }
-    logger.debug('Min API version validation passed');
+    logger.debug(`Min API version validation passed: ${minApiResult.message ?? 'OK'}`);
     const maxApiResult = await MaxApiVersionValidator.validate(minApiContext);
     if (maxApiResult.status === 'FAIL' && maxApiResult.message) {
+      logger.error(`Max API version validation failed: ${maxApiResult.message}`);
       throw new SfError(maxApiResult.message, 'UnsupportedApiVersion');
     }
-    logger.debug('Max API version validation passed');
+    logger.debug(`Max API version validation passed: ${maxApiResult.message ?? 'OK'}`);
 
     logger.debug('Running preflight validation');
     await PreflightValidator.validate(connection, flags['target-org']);

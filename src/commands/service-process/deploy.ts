@@ -75,6 +75,8 @@ export default class ServiceProcessDeploy extends SfCommand<ServiceProcessDeploy
 
   public async run(): Promise<ServiceProcessDeployResult> {
     const { flags } = await this.parse(ServiceProcessDeploy);
+    const runId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+    const logger = await Logger.child('service-process-deploy', { runId });
     const inputZipRaw = flags['input-zip'];
     const inputZip = typeof inputZipRaw === 'string' ? inputZipRaw : inputZipRaw?.[0];
     if (inputZip == null || inputZip === '') {
@@ -87,20 +89,27 @@ export default class ServiceProcessDeploy extends SfCommand<ServiceProcessDeploy
       conn: connection,
       expectedApiVersion: flags['api-version'],
     };
+    logger.info(
+      `Deploy started: inputZip=${inputZip}, org=${flags['target-org'].getUsername() ?? '(unknown)'}, apiVersion=${
+        flags['api-version'] ?? 'default'
+      }`
+    );
+    logger.debug(`Run ID: ${runId}`);
+    logger.debug(`Validating API version constraints: requested=${flags['api-version'] ?? 'default'}`);
     const minApiResult = await MinApiVersionValidator.validate(apiContext);
     if (minApiResult.status === 'FAIL' && minApiResult.message) {
+      logger.error(`Min API version validation failed: ${minApiResult.message}`);
       throw new SfError(minApiResult.message, 'UnsupportedApiVersion');
     }
+    logger.debug(`Min API version validation passed: ${minApiResult.message ?? 'OK'}`);
     const maxApiResult = await MaxApiVersionValidator.validate(apiContext);
     if (maxApiResult.status === 'FAIL' && maxApiResult.message) {
+      logger.error(`Max API version validation failed: ${maxApiResult.message}`);
       throw new SfError(maxApiResult.message, 'UnsupportedApiVersion');
     }
-
-    const runId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-    const logger = await Logger.child('service-process-deploy', { runId });
+    logger.debug(`Max API version validation passed: ${maxApiResult.message ?? 'OK'}`);
     await PreflightValidator.validate(connection, flags['target-org'], logger);
     logger.debug('Preflight check passed');
-    logger.info(`Deploy started: inputZip=${inputZip}`);
     const deployApiVersion = flags['api-version'];
     const deployStages = new DeploymentStages(
       this,
