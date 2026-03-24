@@ -18,12 +18,15 @@ import { TestContext } from '@salesforce/core/testSetup';
 import { Connection } from '@salesforce/core';
 import { expect } from 'chai';
 import { stubSfCommandUx } from '@salesforce/sf-plugins-core';
+import type { SinonStub } from 'sinon';
 import { PreflightValidator } from '../../../src/validation/PreflightValidator.js';
 import { MinApiVersionValidator } from '../../../src/validation/validators/MinApiVersionValidator.js';
+import { MaxApiVersionValidator } from '../../../src/validation/validators/MaxApiVersionValidator.js';
 import ServiceProcessList from '../../../src/commands/service-process/list.js';
 
 describe('service-process list', () => {
   const $$ = new TestContext();
+  let maxApiValidatorStub: SinonStub;
 
   beforeEach(() => {
     stubSfCommandUx($$.SANDBOX);
@@ -31,6 +34,10 @@ describe('service-process list', () => {
     $$.SANDBOX.stub(PreflightValidator, 'validate').resolves();
     $$.SANDBOX.stub(MinApiVersionValidator, 'validate').resolves({
       name: 'MinApiVersion',
+      status: 'PASS' as const,
+    });
+    maxApiValidatorStub = $$.SANDBOX.stub(MaxApiVersionValidator, 'validate').resolves({
+      name: 'MaxApiVersion',
       status: 'PASS' as const,
     });
 
@@ -75,5 +82,20 @@ describe('service-process list', () => {
     const result = await ServiceProcessList.run(['--target-org', 'test@org.com', '--json']);
     expect(result).to.have.property('serviceProcesses').that.is.an('array');
     expect(result.serviceProcesses[0]).to.have.keys('id', 'name', 'description', 'status');
+  });
+
+  it('fails when --api-version is above org max', async () => {
+    maxApiValidatorStub.resolves({
+      name: 'MaxApiVersion',
+      status: 'FAIL' as const,
+      message: 'Invalid --api-version 67.0. Maximum API version supported by org is 66.0.',
+    });
+    try {
+      await ServiceProcessList.run(['--target-org', 'test@org.com', '--api-version', '67.0']);
+      expect.fail('Expected command to throw');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      expect(message).to.include('Maximum API version supported by org is 66.0');
+    }
   });
 });

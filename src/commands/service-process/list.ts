@@ -19,6 +19,7 @@ import { Messages, SfError } from '@salesforce/core';
 import { InsufficientAccessError } from '../../errors.js';
 import { PreflightValidator } from '../../validation/PreflightValidator.js';
 import { MinApiVersionValidator } from '../../validation/validators/MinApiVersionValidator.js';
+import { MaxApiVersionValidator } from '../../validation/validators/MaxApiVersionValidator.js';
 import type { ValidationContext } from '../../validation/types.js';
 
 Messages.importMessagesDirectoryFromMetaUrl(import.meta.url);
@@ -63,6 +64,10 @@ export default class ServiceProcessList extends SfCommand<ServiceProcessListResu
     const minApiResult = await MinApiVersionValidator.validate(minApiContext);
     if (minApiResult.status === 'FAIL' && minApiResult.message) {
       throw new SfError(minApiResult.message, 'UnsupportedApiVersion');
+    }
+    const maxApiResult = await MaxApiVersionValidator.validate(minApiContext);
+    if (maxApiResult.status === 'FAIL' && maxApiResult.message) {
+      throw new SfError(maxApiResult.message, 'UnsupportedApiVersion');
     }
 
     await PreflightValidator.validate(connection, flags['target-org']);

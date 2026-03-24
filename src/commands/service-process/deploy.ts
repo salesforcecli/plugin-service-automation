@@ -22,15 +22,13 @@ import { DeployService } from '../../services/deployserviceprocess.js';
 import { DeploymentStages } from '../../utils/deploymentStages.js';
 import type { DeploymentSummary } from '../../utils/deploymentStages.js';
 import { getFormattedMessageForLog, getValidationErrorMessage } from '../../utils/errorFormatter.js';
-import {
-  MIN_SERVICE_PROCESS_API_VERSION,
-  isApiVersionAtLeast,
-  getUnsupportedApiVersionMessage,
-} from '../../utils/apiVersion.js';
 import { formatSuccessJsonOutput, formatFailureJsonOutput } from '../../utils/deployJsonFormatter.js';
 import type { DeployJsonOutput } from '../../types/jsonOutput.js';
 import type { DeploymentContext } from '../../services/deploymentContext.js';
 import { PreflightValidator } from '../../validation/PreflightValidator.js';
+import { MaxApiVersionValidator } from '../../validation/validators/MaxApiVersionValidator.js';
+import { MinApiVersionValidator } from '../../validation/validators/MinApiVersionValidator.js';
+import type { ValidationContext } from '../../validation/types.js';
 
 Messages.importMessagesDirectoryFromMetaUrl(import.meta.url);
 const messages = Messages.loadMessages('@salesforce/plugin-service-automation', 'service-process.deploy');
@@ -85,12 +83,17 @@ export default class ServiceProcessDeploy extends SfCommand<ServiceProcessDeploy
 
     const apiVersion = flags['api-version'];
     const connection = flags['target-org'].getConnection(apiVersion);
-    const effectiveApiVersion = apiVersion ?? connection.getApiVersion();
-    if (!isApiVersionAtLeast(effectiveApiVersion, MIN_SERVICE_PROCESS_API_VERSION)) {
-      throw new SfError(
-        getUnsupportedApiVersionMessage(effectiveApiVersion, Boolean(apiVersion)),
-        'UnsupportedApiVersion'
-      );
+    const apiContext: ValidationContext = {
+      conn: connection,
+      expectedApiVersion: flags['api-version'],
+    };
+    const minApiResult = await MinApiVersionValidator.validate(apiContext);
+    if (minApiResult.status === 'FAIL' && minApiResult.message) {
+      throw new SfError(minApiResult.message, 'UnsupportedApiVersion');
+    }
+    const maxApiResult = await MaxApiVersionValidator.validate(apiContext);
+    if (maxApiResult.status === 'FAIL' && maxApiResult.message) {
+      throw new SfError(maxApiResult.message, 'UnsupportedApiVersion');
     }
 
     await PreflightValidator.validate(connection, flags['target-org']);

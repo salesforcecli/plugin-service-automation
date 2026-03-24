@@ -21,11 +21,6 @@ import { Connection, SfError } from '@salesforce/core';
 import { ComponentSet } from '@salesforce/source-deploy-retrieve';
 import JSZip from 'jszip';
 import { ServiceProcessDataRetrievalFailure } from '../errors.js';
-import {
-  MIN_SERVICE_PROCESS_API_VERSION,
-  isApiVersionAtLeast,
-  getUnsupportedApiVersionMessage,
-} from '../utils/apiVersion.js';
 import { validateRequest } from '../validation/validators/retrieveServiceProcessRequestValidator.js';
 import { ServiceProcessRetrieveRequest } from '../types/types.js';
 import { getFlowDeploymentIntentByName } from '../utils/flow/flowMetadata.js';
@@ -471,11 +466,6 @@ export async function retrieveServiceProcess(
   try {
     retrieveStages?.startPhase('Validating Request');
     currentPhase = 'Validating Request';
-
-    const effectiveVersion = request.orgMetadata.apiVersion;
-    if (!isApiVersionAtLeast(effectiveVersion, MIN_SERVICE_PROCESS_API_VERSION)) {
-      throw new SfError(getUnsupportedApiVersionMessage(effectiveVersion), 'UnsupportedApiVersion');
-    }
 
     await validateRequest(request);
     retrieveStages?.succeedPhase('Validating Request');
