@@ -20,9 +20,7 @@
     "@salesforce/cli-plugins-testkit": "^5.3.41",
     "@salesforce/dev-scripts": "^11.0.4",
     "@salesforce/plugin-command-reference": "^3.1.79",
-    "c8": "^10.1.3",
     "eslint-plugin-sf-plugin": "^1.20.33",
-    "nyc": "^18.0.0",
     "oclif": "^4.22.59",
     "ts-node": "^10.9.2",
     "typescript": "^5.5.4"
@@ -79,9 +77,8 @@
     "postpack": "sf-clean --ignore-signing-artifacts",
     "prepack": "sf-prepack",
     "prepare": "sf-install",
-    "coverage": "nyc mocha \"test/**/*.test.ts\"",
     "test": "wireit",
-    "test:nuts": "nyc mocha \"**/*.nut.ts\" --slow 4500 --timeout 600000 --parallel",
+    "test:nuts": "mocha \"**/*.nut.ts\" --slow 4500 --timeout 600000 --parallel",
     "test:only": "wireit",
     "version": "oclif readme"
   },
@@ -150,7 +147,7 @@
       ]
     },
     "test:only": {
-      "command": "nyc mocha \"test/**/*.test.ts\"",
+      "command": "mocha \"test/**/*.test.ts\"",
       "env": {
         "FORCE_COLOR": "2"
       },
@@ -159,8 +156,7 @@
         "src/**/*.ts",
         "**/tsconfig.json",
         ".mocha*",
-        "!*.nut.ts",
-        ".nycrc"
+        "!*.nut.ts"
       ],
       "output": []
     },
