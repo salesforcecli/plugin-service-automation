@@ -126,6 +126,7 @@ export default class ServiceProcessDeploy extends SfCommand<ServiceProcessDeploy
         expectedApiVersion: flags['api-version'],
         command: this,
         logger,
+        runId,
         deployStages,
         linkIntake: flags['link-intake'],
         linkFulfillment: flags['link-fulfillment'],

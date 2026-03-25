@@ -26,6 +26,7 @@ import { ServiceProcessRetrieveRequest } from '../types/types.js';
 import { getFlowDeploymentIntentByName } from '../utils/flow/flowMetadata.js';
 import type { DeploymentMetadata } from '../workspace/deploymentMetadata.js';
 import type { RetrieveStages } from '../utils/retrieveStages.js';
+import { publishLifecycleMetric, estimateJsonSizeKb } from '../utils/lifecycleMetrics.js';
 import {
   createZipFile,
   createTemporaryDirectory,
@@ -67,15 +68,29 @@ export async function retrieveServiceProcessDetails(
     ? `/services/data/v${apiVersion}/connect/service-automation/service-process/${serviceProcessId}`
     : `/connect/service-automation/service-process/${serviceProcessId}`;
 
-  logger?.debug(`Fetching Service Process details from API: ${url}`);
+  logger?.debug(`Fetching Service Process details from API 2: ${url}`);
+  const fetchStart = Date.now();
 
   try {
     const serviceProcessData = await connection.requestGet<Record<string, unknown>>(url);
+    await publishLifecycleMetric(logger, 'spConnectApiInvoke', {
+      serviceProcessId,
+      responseSizeKB: estimateJsonSizeKb(serviceProcessData),
+      stepExecutionDurationMs: Date.now() - fetchStart,
+      status: 'SUCCESS',
+    });
     logger?.debug(`Service Process API response received: ${Object.keys(serviceProcessData).length} fields`);
     const filtered = filteredServiceProcessData(serviceProcessData);
     logger?.debug(`Filtered Service Process data: ${Object.keys(filtered).length} supported fields`);
     return filtered;
   } catch (error) {
+    await publishLifecycleMetric(logger, 'spConnectApiInvoke', {
+      serviceProcessId,
+      responseSizeKB: 0,
+      stepExecutionDurationMs: Date.now() - fetchStart,
+      status: 'FAILURE',
+      errorTrigger: error instanceof Error ? error.message : String(error),
+    });
     const err = error as { errorCode?: string; data?: { errorCode?: string } };
     const errorCode = err?.errorCode ?? err?.data?.errorCode;
     logger?.error(`Service Process data retrieval failed: errorCode=${errorCode ?? 'unknown'}`);
@@ -102,6 +117,7 @@ export async function extractServiceProcessDependencies(
   outputDir: string,
   logger?: Logger
 ): Promise<ExtractDependenciesResult> {
+  const parseStart = Date.now();
   const serviceProcessDeps: Record<string, unknown> = {};
   const intakeForm = serviceProcessData.intakeForm as Record<string, unknown> | undefined;
   const fulfillmentFlow = serviceProcessData.fulfillmentFlow as Record<string, unknown> | undefined;
@@ -146,6 +162,16 @@ export async function extractServiceProcessDependencies(
   }
 
   const flowMetadata: Array<{ apiName: string; xmlContent: string }> = [];
+  const preProcessors = serviceProcessData.preProcessors;
+  const preProcessorCount = Array.isArray(preProcessors) ? preProcessors.length : 0;
+  const flowCount = flowApiNames.length;
+  const dependencyCount = flowCount + preProcessorCount;
+  await publishLifecycleMetric(logger, 'spDependencyParsing', {
+    flowCount,
+    dependencyCount,
+    stepExecutionDurationMs: Date.now() - parseStart,
+    status: 'SUCCESS',
+  });
 
   if (flowApiNames.length > 0) {
     logger?.info(`Fetching ${flowApiNames.length} flow(s): ${flowApiNames.join(', ')}`);
@@ -165,7 +191,6 @@ export async function extractServiceProcessDependencies(
   } else {
     logger?.debug('No flows to retrieve (all flows are namespaced or missing)');
   }
-
   return { deps: serviceProcessDeps, flowMetadata };
 }
 
@@ -251,12 +276,19 @@ export async function fetchFlows(
     }));
     const componentSet = new ComponentSet(components);
     logger?.debug(`Retrieving ${flowApiNames.length} flow(s) via Metadata API`);
+    const metadataRetrieveStart = Date.now();
     const retrieveResult = await componentSet.retrieve({
       usernameOrConnection: connection,
       output: tempRetrieveDir,
       merge: true,
     });
     await retrieveResult.pollStatus();
+    await publishLifecycleMetric(logger, 'spMetadataRetrieval', {
+      metadataTypes: 'Flow',
+      flowCount: flowApiNames.length,
+      stepExecutionDurationMs: Date.now() - metadataRetrieveStart,
+      status: 'SUCCESS',
+    });
     logger?.debug('Flow retrieval completed');
 
     const flowMetadata: Array<{ apiName: string; xmlContent: string }> = [];
@@ -276,6 +308,13 @@ export async function fetchFlows(
     }
     return flowMetadata;
   } catch (error) {
+    await publishLifecycleMetric(logger, 'spMetadataRetrieval', {
+      metadataTypes: 'Flow',
+      flowCount: flowApiNames.length,
+      stepExecutionDurationMs: 0,
+      status: 'FAILURE',
+      errorTrigger: error instanceof Error ? error.message : String(error),
+    });
     logger?.error(`Flow fetch failed: ${error instanceof Error ? error.message : String(error)}`);
     throw new Error(`Failed to fetch flow metadata: ${error instanceof Error ? error.message : String(error)}`);
   } finally {
@@ -525,6 +564,7 @@ export async function retrieveServiceProcess(
 ): Promise<RetrieveServiceProcessResult> {
   let currentPhase: RetrievePhase = 'Validating Request';
   const startTime = Date.now();
+  let packageStartTime: number | undefined;
 
   try {
     retrieveStages?.startPhase('Validating Request');
@@ -580,6 +620,7 @@ export async function retrieveServiceProcess(
 
     currentPhase = 'Generating consolidated package';
     logger?.info('Generating consolidated package');
+    packageStartTime = Date.now();
     const zipFilePath = await generateZippedArtifacts(
       request,
       serviceProcessData,
@@ -587,6 +628,10 @@ export async function retrieveServiceProcess(
       retrieveStages,
       logger
     );
+    await publishLifecycleMetric(logger, 'spPackageGeneration', {
+      stepExecutionDurationMs: Date.now() - packageStartTime,
+      status: 'SUCCESS',
+    });
     logger?.debug(`ZIP file created: ${zipFilePath}`);
 
     retrieveStages?.startPhase('Done');
@@ -595,11 +640,29 @@ export async function retrieveServiceProcess(
     retrieveStages?.stop();
 
     const duration = Date.now() - startTime;
+    await publishLifecycleMetric(logger, 'spExportPerformance', {
+      serviceProcessId: request.serviceProcessId,
+      stepExecutionDurationMs: duration,
+      status: 'SUCCESS',
+    });
     logger?.info(`Retrieve completed successfully in ${duration}ms`);
 
     const result = buildRetrieveResult(request, serviceProcessData, flowMetadata, zipFilePath);
     return { zipFilePath, result };
   } catch (error) {
+    if (currentPhase === 'Generating consolidated package' && packageStartTime !== undefined) {
+      await publishLifecycleMetric(logger, 'spPackageGeneration', {
+        stepExecutionDurationMs: Date.now() - packageStartTime,
+        status: 'FAILURE',
+        errorTrigger: error instanceof Error ? error.message : String(error),
+      });
+    }
+    await publishLifecycleMetric(logger, 'spExportPerformance', {
+      serviceProcessId: request.serviceProcessId,
+      stepExecutionDurationMs: Date.now() - startTime,
+      status: 'FAILURE',
+      errorTrigger: error instanceof Error ? error.message : String(error),
+    });
     logger?.error(
       `Retrieve failed in phase "${currentPhase}": ${error instanceof Error ? error.message : String(error)}`
     );

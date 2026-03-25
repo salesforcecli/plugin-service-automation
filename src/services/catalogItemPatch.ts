@@ -18,6 +18,7 @@ import type { Connection } from '@salesforce/core';
 import type { Logger } from '@salesforce/core';
 import { buildCatalogItemPath } from '../constants.js';
 import { getConnect, patchConnect } from '../utils/api/connectApi.js';
+import { publishLifecycleMetric } from '../utils/lifecycleMetrics.js';
 import { formatErrorResponseForLog } from '../utils/safeStringify.js';
 import type { DeployedFlowInfo } from '../utils/flow/deployflow.js';
 import type { DeployedFlowNames } from '../workspace/serviceProcessTransformer.js';
@@ -76,13 +77,15 @@ export class CatalogItemPatcher {
   /**
    * Patch the service-automation catalog item with deployed flow definition ids for intake and fulfillment.
    */
+  // eslint-disable-next-line complexity
   public static async patchCatalogItemWithFlowIds(
     conn: Connection,
     targetServiceProcessId: string,
     deployedFlows: DeployedFlowInfo[],
     deployedFlowNames: DeployedFlowNames | undefined,
     serviceProcessName: string | undefined,
-    logger?: Logger
+    logger?: Logger,
+    runId?: string
   ): Promise<void> {
     const fullNameToDefId = new Map(
       deployedFlows
@@ -118,12 +121,8 @@ export class CatalogItemPatcher {
 
     const existingIntakeFormId = catalogItem?.intakeForm?.id;
     const contextDefinitionDevNameOrId = catalogItem?.contextDefinitionDevNameOrId;
-    if (existingIntakeFormId) {
-      logger?.debug(`Fetched catalog item intakeForm.id: ${existingIntakeFormId}`);
-    }
-    if (contextDefinitionDevNameOrId) {
-      logger?.debug(`Fetched catalog item contextDefinitionDevNameOrId: ${contextDefinitionDevNameOrId}`);
-    }
+    logger?.debug(`Fetched catalog item intakeForm.id: ${existingIntakeFormId ?? 'none'}`);
+    logger?.debug(`Fetched catalog item contextDefinitionDevNameOrId: ${contextDefinitionDevNameOrId ?? 'none'}`);
 
     const catalogItemBody = CatalogItemPatcher.buildCatalogItemPatchBody(
       intakeFormDefinitionId,
@@ -142,6 +141,14 @@ export class CatalogItemPatcher {
     const patchStart = Date.now();
     try {
       const patchResponse = await patchConnect(conn, catalogItemPath, catalogItemBody);
+      await publishLifecycleMetric(logger, 'spTargetOrgFlowLinking', {
+        runId,
+        spId: targetServiceProcessId,
+        intakeFlowId: intakeFormDefinitionId ?? null,
+        fulfillmentFlowId: fulfillmentFlowDefinitionId ?? null,
+        stepExecutionDurationMs: Date.now() - patchStart,
+        status: 'SUCCESS',
+      });
       logger?.debug(`Catalog item PATCH completed in ${Date.now() - patchStart}ms`);
       logger?.debug(`Catalog item PATCH full response: ${JSON.stringify(patchResponse)}`);
       logger?.info('Catalog item patched successfully.');
@@ -151,6 +158,15 @@ export class CatalogItemPatcher {
         }`
       );
     } catch (error) {
+      await publishLifecycleMetric(logger, 'spTargetOrgFlowLinking', {
+        runId,
+        spId: targetServiceProcessId,
+        intakeFlowId: intakeFormDefinitionId ?? null,
+        fulfillmentFlowId: fulfillmentFlowDefinitionId ?? null,
+        stepExecutionDurationMs: Date.now() - patchStart,
+        status: 'FAILURE',
+        errorTrigger: error instanceof Error ? error.message : String(error),
+      });
       logger?.error(`Catalog item PATCH failed: ${error instanceof Error ? error.message : String(error)}`);
       const err = error as Error & { response?: unknown };
       if (logger && err.response !== undefined) {
