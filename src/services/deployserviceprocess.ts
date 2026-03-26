@@ -36,6 +36,7 @@ import type { DeployedFlowNames } from '../workspace/serviceProcessTransformer.j
 import { ValidationRunner, builtInValidatorsWithMetadata } from '../validation/index.js';
 import type { ValidationContext } from '../validation/types.js';
 import { DeploymentStages, type TreeItem } from '../utils/deploymentStages.js';
+import { publishLifecycleMetric, toKilobytes } from '../utils/lifecycleMetrics.js';
 import { formatErrorResponseForLog } from '../utils/safeStringify.js';
 import { RollbackStages, ROLLBACK_SECTION_HEADER } from '../utils/rollbackStages.js';
 import { defaults, type DeployServiceProcessDependencies } from './deployDependencies.js';
@@ -72,6 +73,8 @@ export type DeployServiceOptions = {
   deployStages?: DeploymentStages;
   /** Optional: @salesforce/core Logger for diagnostic output (respects global --loglevel or SF_LOG_LEVEL). */
   logger?: Logger;
+  /** Correlation id from command layer for telemetry and logs. */
+  runId?: string;
   /** When true, set intake flow deploymentIntent to "link" and namespace to target org's namespace in deployment-metadata.json during preparation. */
   linkIntake?: boolean;
   /** When true, set fulfillment flow deploymentIntent to "link" and namespace to target org's namespace in deployment-metadata.json during preparation. */
@@ -89,6 +92,7 @@ export class DeployService {
   private readonly command?: SfCommand<unknown>;
   private readonly deployStages?: DeploymentStages;
   private readonly logger?: Logger;
+  private readonly runId?: string;
   private readonly linkIntake: boolean;
   private readonly linkFulfillment: boolean;
   private readonly deps: Required<DeployServiceProcessDependencies>;
@@ -99,6 +103,7 @@ export class DeployService {
     this.command = options.command;
     this.deployStages = options.deployStages;
     this.logger = options.logger;
+    this.runId = options.runId;
     this.linkIntake = options.linkIntake ?? false;
     this.linkFulfillment = options.linkFulfillment ?? false;
     this.deps = { ...defaults, ...options.dependencies } as Required<DeployServiceProcessDependencies>;
@@ -298,6 +303,7 @@ export class DeployService {
     }
     const flowDir = path.join(workspace, METADATA_FLOWS_RELATIVE_PATH);
     const intakeFormFlowPath = FlowPathResolver.resolveFlowFilePath(flowDir, deployedFlowNames.intakeForm.originalName);
+    const transformStart = Date.now();
     this.logger?.debug(
       `Calling FlowTransformer.transformIntakeFormFlow: ${intakeFormFlowPath} ${targetServiceProcessId}`
     );
@@ -307,6 +313,13 @@ export class DeployService {
     if (transformResult.modified) {
       this.logger?.debug(`Flow transformer: ${transformResult.message}`);
     }
+    await publishLifecycleMetric(this.logger, 'spFlowIdPatching', {
+      runId: this.runId,
+      spId: targetServiceProcessId,
+      flowName: deployedFlowNames.intakeForm.originalName,
+      stepExecutionDurationMs: Date.now() - transformStart,
+      status: 'SUCCESS',
+    });
   }
 
   /**
@@ -498,6 +511,12 @@ export class DeployService {
       };
 
       await ValidationRunner.runValidationsWithProgress(validationContext, activeValidators);
+      await publishLifecycleMetric(this.logger, 'spPreDeploymentValidation', {
+        runId: this.runId,
+        missingDependencyCount: 0,
+        stepExecutionDurationMs: Date.now() - phaseStart,
+        status: 'SUCCESS',
+      });
 
       // Success - substages remain visible showing which validators ran
       this.deployStages?.succeedPhase('Validating deployment');
@@ -508,6 +527,21 @@ export class DeployService {
       this.logger?.error(`Validation failed: ${error instanceof Error ? error.message : String(error)}`);
       if (error instanceof ValidationError && error.failures?.length) {
         this.logger?.debug(`Validation failed validators: ${error.failures.map((f) => f.name).join(', ')}`);
+        await publishLifecycleMetric(this.logger, 'spPreDeploymentValidation', {
+          runId: this.runId,
+          missingDependencyCount: error.failures.length,
+          stepExecutionDurationMs: Date.now() - phaseStart,
+          status: 'FAILURE',
+          errorTrigger: error.message,
+        });
+      } else {
+        await publishLifecycleMetric(this.logger, 'spPreDeploymentValidation', {
+          runId: this.runId,
+          missingDependencyCount: -1,
+          stepExecutionDurationMs: Date.now() - phaseStart,
+          status: 'FAILURE',
+          errorTrigger: error instanceof Error ? error.message : String(error),
+        });
       }
       // Stack only for unexpected errors during validation phase (not business-rule ValidationError)
       if (this.logger && error instanceof Error && error.stack && !(error instanceof ValidationError)) {
@@ -546,12 +580,20 @@ export class DeployService {
       // Create zip and upload
       const { zipPath, cleanup } = await DeployWorkspace.createZipFromWorkspace(context.workspace);
       const cleanupWorkspaceZip = cleanup;
+      const zipSizeBytes = fs.statSync(zipPath).size;
 
       const conn = context.connection;
       this.logger?.debug(`Uploading zip (path=${zipPath})`);
       const uploadStart = Date.now();
       const uploadResult = await deps.uploadZip(conn, zipPath);
       const contentDocumentId = uploadResult.contentDocumentId;
+      await publishLifecycleMetric(this.logger, 'spContentCreation', {
+        runId: this.runId,
+        documentSizeKB: toKilobytes(zipSizeBytes),
+        documentId: contentDocumentId,
+        stepExecutionDurationMs: Date.now() - uploadStart,
+        status: 'SUCCESS',
+      });
       this.logger?.debug(`Upload completed in ${Date.now() - uploadStart}ms`);
       this.logger?.debug(`Upload full response: ${JSON.stringify(uploadResult)}`);
 
@@ -563,7 +605,14 @@ export class DeployService {
       this.logger?.debug(
         `Service Process creation API start (contentDocumentId=${contentDocumentId}, serviceProcessName=${templateDeployBody.serviceProcessName})`
       );
+      const spApiStart = Date.now();
       const templateDeployResponse = await deps.callTemplateDeploy(conn, contentDocumentId, templateDeployBody);
+      await publishLifecycleMetric(this.logger, 'spCreationApi', {
+        runId: this.runId,
+        spId: templateDeployResponse?.deploymentResult ?? null,
+        status: templateDeployResponse?.status ?? 'unknown',
+        stepExecutionDurationMs: Date.now() - spApiStart,
+      });
       this.logger?.debug(`Service Process creation completed in ${Date.now() - phaseStart}ms`);
       this.logger?.debug(`Service Process creation full response: ${JSON.stringify(templateDeployResponse)}`);
 
@@ -795,7 +844,8 @@ export class DeployService {
           context.deployedFlows,
           context.deployedFlowNames,
           context.templateDataExtract?.name,
-          this.logger
+          this.logger,
+          this.runId
         );
       }
 
@@ -908,7 +958,24 @@ export class DeployService {
       }
     }
 
+    await this.logRollbackTelemetry(currentContext, error.message, rollbackStartTime);
+
     return currentContext;
+  }
+
+  private async logRollbackTelemetry(
+    context: DeploymentContext,
+    errorTrigger: string,
+    rollbackStartTime: number
+  ): Promise<void> {
+    await publishLifecycleMetric(this.logger, 'spRollbackLatency', {
+      runId: this.runId,
+      deletedSpId: context.targetServiceProcessId ?? null,
+      deletedFlowIds: (context.deployedFlows ?? []).map((f) => f.id),
+      errorTrigger,
+      rollbackDurationMs: Date.now() - rollbackStartTime,
+      rollbackSucceeded: context.rollback.succeeded ?? false,
+    });
   }
 
   // eslint-disable-next-line class-methods-use-this

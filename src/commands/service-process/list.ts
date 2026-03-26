@@ -21,6 +21,7 @@ import { PreflightValidator } from '../../validation/PreflightValidator.js';
 import { MinApiVersionValidator } from '../../validation/validators/MinApiVersionValidator.js';
 import { MaxApiVersionValidator } from '../../validation/validators/MaxApiVersionValidator.js';
 import type { ValidationContext } from '../../validation/types.js';
+import { publishLifecycleMetric } from '../../utils/lifecycleMetrics.js';
 
 Messages.importMessagesDirectoryFromMetaUrl(import.meta.url);
 const messages = Messages.loadMessages('@salesforce/plugin-service-automation', 'service-process.list');
@@ -54,6 +55,7 @@ export default class ServiceProcessList extends SfCommand<ServiceProcessListResu
 
   public async run(): Promise<ServiceProcessListResult> {
     const { flags } = await this.parse(ServiceProcessList);
+    const listStart = Date.now();
 
     const runId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
     const logger = await Logger.child('service-process-list', { runId });
@@ -88,15 +90,32 @@ export default class ServiceProcessList extends SfCommand<ServiceProcessListResu
 
     try {
       logger.debug('Querying Service Process count');
+      const countQueryStart = Date.now();
       const count = await connection.query<{ count: number }>(
         "SELECT COUNT() FROM Product2 WHERE UsedFor = 'ServiceProcess'"
       );
+      await publishLifecycleMetric(logger, 'spListQuery', {
+        runId,
+        queryType: 'count',
+        stepExecutionDurationMs: Date.now() - countQueryStart,
+        limit: flags.limit,
+        status: 'SUCCESS',
+      });
       logger.debug(`Total Service Processes in org: ${count.totalSize}`);
 
       logger.debug(`Querying Service Process records (limit: ${flags.limit})`);
+      const recordsQueryStart = Date.now();
       const result = await connection.query<{ Name: string; Id: string; Description?: string; IsActive: boolean }>(
         `SELECT Id, Name, Description, IsActive FROM Product2 WHERE UsedFor = 'ServiceProcess' ORDER BY Name LIMIT ${flags.limit}`
       );
+      await publishLifecycleMetric(logger, 'spListQuery', {
+        runId,
+        queryType: 'records',
+        stepExecutionDurationMs: Date.now() - recordsQueryStart,
+        limit: flags.limit,
+        resultCount: result.records.length,
+        status: 'SUCCESS',
+      });
 
       const serviceProcessList = result.records;
       logger.debug(`Retrieved ${serviceProcessList.length} Service Process record(s)`);
@@ -117,6 +136,13 @@ export default class ServiceProcessList extends SfCommand<ServiceProcessListResu
 
       this.log(`\u2714 Displayed ${result.totalSize} of ${count.totalSize} Service Processes\n`);
       logger.info(`List completed successfully: displayed=${result.totalSize}, total=${count.totalSize}`);
+      await publishLifecycleMetric(logger, 'spListPerformance', {
+        runId,
+        stepExecutionDurationMs: Date.now() - listStart,
+        displayedCount: result.totalSize,
+        totalCount: count.totalSize,
+        status: 'SUCCESS',
+      });
 
       return {
         serviceProcesses: serviceProcessList.map((record) => ({
@@ -132,6 +158,12 @@ export default class ServiceProcessList extends SfCommand<ServiceProcessListResu
       const errorMessage = err instanceof Error ? err.message : String(err);
       logger.error(`List failed: ${errorMessage}`);
       logger.debug(`List failed (raw): ${err instanceof Error ? err.stack ?? err.message : String(err)}`);
+      await publishLifecycleMetric(logger, 'spListPerformance', {
+        runId,
+        stepExecutionDurationMs: Date.now() - listStart,
+        status: 'FAILURE',
+        errorTrigger: errorMessage,
+      });
 
       const isUsedForColumnError = errorMessage.includes("No such column 'UsedFor' on entity");
       const isProduct2NotIdentified = errorMessage.includes("sObject type 'Product2' is not supported.");
