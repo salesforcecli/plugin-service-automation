@@ -12,7 +12,7 @@ The command downloads the Service Process definition, identifies supported depen
 
 Supported metadata retrieved by this command includes:
 
-- Service Process Attributes (anchor, custom, content)
+- Service Process Attributes (anchor, custom, context)
 - Intake flow
 - Fulfillment flow
 - Preprocessor reference

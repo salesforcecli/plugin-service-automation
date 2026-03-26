@@ -15,7 +15,6 @@
  */
 
 import { Connection } from '@salesforce/core';
-import got from 'got';
 
 type HttpMethod = 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE';
 
@@ -42,39 +41,32 @@ export async function requestConnectApi<T = unknown>(
     headers?: Record<string, string>;
   }
 ): Promise<T> {
+  type HttpRequestArg = Exclude<Parameters<Connection['request']>[0], string>;
   const apiVersion = options?.apiVersion ?? connection.getApiVersion();
   const relativePath = buildConnectPath(path, apiVersion);
   const url = connection.normalizeUrl(relativePath);
   const method = options?.method ?? 'GET';
-
-  const { accessToken } = connection.getConnectionOptions();
-  if (!accessToken) {
-    throw new Error('Connection missing accessToken');
-  }
-
-  const headers: Record<string, string> = {
-    Authorization: `Bearer ${accessToken}`,
-    'Content-Type': 'application/json',
-    ...(options?.headers ?? {}),
+  const headers: Record<string, string> = { ...(options?.headers ?? {}) };
+  const requestInfo: HttpRequestArg = {
+    method,
+    url,
   };
-
-  const gotOptions: {
-    method: HttpMethod;
-    headers: Record<string, string>;
-    body?: string | Buffer;
-    json?: Record<string, unknown>;
-  } = { method, headers };
-
   if (method !== 'GET' && options?.body !== undefined) {
-    if (typeof options.body === 'string' || Buffer.isBuffer(options.body)) {
-      gotOptions.body = options.body;
+    const body = options.body;
+    if (typeof body === 'string' || Buffer.isBuffer(body) || ArrayBuffer.isView(body)) {
+      requestInfo.body = body as HttpRequestArg['body'];
     } else {
-      gotOptions.json = options.body as Record<string, unknown>;
+      requestInfo.body = JSON.stringify(body) as HttpRequestArg['body'];
+      if (headers['Content-Type'] === undefined && headers['content-type'] === undefined) {
+        headers['Content-Type'] = 'application/json';
+      }
     }
   }
+  if (Object.keys(headers).length > 0) {
+    requestInfo.headers = headers;
+  }
 
-  const response = await got(url, gotOptions).json<T>();
-  return response;
+  return connection.request<T>(requestInfo);
 }
 
 export function getConnect<T = unknown>(connection: Connection, path: string, apiVersion?: string): Promise<T> {
