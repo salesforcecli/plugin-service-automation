@@ -15,7 +15,7 @@
  */
 
 import { MultiStageOutput } from '@oclif/multi-stage-output';
-import type { SfCommand } from '@salesforce/sf-plugins-core';
+import { StandardColors, type SfCommand } from '@salesforce/sf-plugins-core';
 import type { ValidationError } from '../errors.js';
 
 type StageData = {
@@ -58,10 +58,6 @@ export type DeploymentSummary = {
  * Provides left-side spinners (⠹) that get replaced by checkmarks (✔) or errors (✗).
  */
 export class DeploymentStages {
-  private static readonly GREEN = '\x1b[32m';
-  private static readonly RED = '\x1b[31m';
-  private static readonly RESET = '\x1b[0m';
-
   private mso: MultiStageOutput<StageData>;
   private command: SfCommand<unknown>;
   private phaseStartTimes: Map<string, number>;
@@ -206,7 +202,7 @@ export class DeploymentStages {
       const match = error.message.match(/Template deploy failed: (\{.*\})/);
       const jsonPart = match ? match[1] : null;
 
-      this.command.log(`\n${DeploymentStages.RED}Service Process Creation Failed${DeploymentStages.RESET}`);
+      this.command.log(`\n${StandardColors.error('Service Process Creation Failed')}`);
 
       if (jsonPart) {
         try {
@@ -225,7 +221,7 @@ export class DeploymentStages {
       this.mso.updateData({ duration: durationStr, error: '' });
       this.mso.error();
 
-      this.command.log(`\n${DeploymentStages.RED}ERROR: Flow Deployment Failed${DeploymentStages.RESET}`);
+      this.command.log(`\n${StandardColors.error('ERROR: Flow Deployment Failed')}`);
 
       // Extract clean error message
       const cleanMessage = this.extractErrorMessage(error);
@@ -235,7 +231,7 @@ export class DeploymentStages {
       this.mso.updateData({ duration: durationStr, error: '' });
       this.mso.error();
 
-      this.command.log(`\n${DeploymentStages.RED}Deployment Finalization Failed${DeploymentStages.RESET}`);
+      this.command.log(`\n${StandardColors.error('Deployment Finalization Failed')}`);
 
       // Extract clean error message
       const cleanMessage = this.extractErrorMessage(error);
@@ -305,9 +301,10 @@ export class DeploymentStages {
     const summaryLines: string[] = ['\nSummary'];
 
     // Status (colorized)
-    const statusColor = summary.status === 'SUCCESS' ? DeploymentStages.GREEN : DeploymentStages.RED;
     const statusPadded = 'Status'.padEnd(maxLabelLength);
-    summaryLines.push(`  ${statusPadded} : ${statusColor}${summary.status}${DeploymentStages.RESET}`);
+    const statusText =
+      summary.status === 'SUCCESS' ? StandardColors.success(summary.status) : StandardColors.error(summary.status);
+    summaryLines.push(`  ${statusPadded} : ${statusText}`);
 
     // Service Process (just name)
     const spPadded = 'Service Process'.padEnd(maxLabelLength);

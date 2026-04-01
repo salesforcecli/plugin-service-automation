@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import type { SfCommand } from '@salesforce/sf-plugins-core';
+import { StandardColors, type SfCommand } from '@salesforce/sf-plugins-core';
 import { ValidationError } from '../errors.js';
 import { formatValidationError } from './errorFormatter.js';
 
@@ -51,11 +51,6 @@ export type DeploymentSummary = {
  * Provides spinner-based UI for deployment phases with conditional display and verbose mode support.
  */
 export class DeploymentLogger {
-  // ANSI color codes
-  private static readonly GREEN = '\x1b[32m';
-  private static readonly RED = '\x1b[31m';
-  private static readonly RESET = '\x1b[0m';
-
   private command: SfCommand<unknown>;
   private verbose: boolean;
   private phaseStartTimes: Map<string, number>;
@@ -109,7 +104,7 @@ export class DeploymentLogger {
     const durationStr = duration > 0 ? ` (${this.formatDuration(duration)}s)` : '';
 
     // Stop spinner and replace with success message
-    this.command.spinner.stop(`${DeploymentLogger.GREEN}✓${DeploymentLogger.RESET} ${message}${durationStr}`);
+    this.command.spinner.stop(`${StandardColors.success('✓')} ${message}${durationStr}`);
     this.phaseStartTimes.delete(message);
 
     // Log items (always shown if provided and condition is true)
@@ -140,7 +135,7 @@ export class DeploymentLogger {
     const durationStr = duration > 0 ? ` (${this.formatDuration(duration)}s)` : '';
 
     // Stop spinner and replace with failure message
-    this.command.spinner.stop(`${DeploymentLogger.RED}✗${DeploymentLogger.RESET} ${message}${durationStr}`);
+    this.command.spinner.stop(`${StandardColors.error('✗')} ${message}${durationStr}`);
     this.phaseStartTimes.delete(message);
 
     // Use formatter for ValidationError, fallback for others
@@ -215,7 +210,7 @@ export class DeploymentLogger {
    */
   public logSuccess(message: string): void {
     if (!this.shouldLog()) return;
-    this.command.log(`${DeploymentLogger.GREEN}✓${DeploymentLogger.RESET} ${message}`);
+    this.command.log(`${StandardColors.success('✓')} ${message}`);
     this.command.log('');
   }
 
@@ -232,9 +227,10 @@ export class DeploymentLogger {
     const maxLabelLength = Math.max(...labels.map((l) => l.length));
 
     // Status (colorized)
-    const statusColor = summary.status === 'SUCCESS' ? DeploymentLogger.GREEN : DeploymentLogger.RED;
     const statusPadded = 'Status'.padEnd(maxLabelLength);
-    this.command.log(`  ${statusPadded} : ${statusColor}${summary.status}${DeploymentLogger.RESET}`);
+    const statusText =
+      summary.status === 'SUCCESS' ? StandardColors.success(summary.status) : StandardColors.error(summary.status);
+    this.command.log(`  ${statusPadded} : ${statusText}`);
 
     // Service Process (just name)
     const spPadded = 'Service Process'.padEnd(maxLabelLength);

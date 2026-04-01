@@ -197,7 +197,7 @@ export default class ServiceProcessDeploy extends SfCommand<ServiceProcessDeploy
     const deployErr = err as DeployError;
     const formattedMessage = getFormattedMessageForLog(err);
     logger.error(`Deploy failed [inputZip=${inputZip}]: ${formattedMessage}`);
-    logger.debug(`Deploy failed (raw): ${err instanceof Error ? err.message : String(err)}`);
+    logger.debug(`Deploy failed (raw): ${err instanceof Error ? err.stack ?? err.message : String(err)}`);
     deployStages.stop();
     const isValidationFailure = err instanceof ValidationError && Boolean(err.failures?.length);
     if (isValidationFailure && !this.jsonEnabled() && err instanceof ValidationError) {

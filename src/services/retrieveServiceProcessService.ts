@@ -23,7 +23,7 @@ import JSZip from 'jszip';
 import { ServiceProcessDataRetrievalFailure } from '../errors.js';
 import { validateRequest } from '../validation/validators/retrieveServiceProcessRequestValidator.js';
 import { ServiceProcessRetrieveRequest } from '../types/types.js';
-import { getFlowDeploymentIntentByName } from '../utils/flow/flowMetadata.js';
+import { getFlowDeploymentIntentByName, type FlowDeploymentIntent } from '../utils/flow/flowMetadata.js';
 import type { DeploymentMetadata } from '../workspace/deploymentMetadata.js';
 import type { RetrieveStages } from '../utils/retrieveStages.js';
 import { publishLifecycleMetric, estimateJsonSizeKb } from '../utils/lifecycleMetrics.js';
@@ -109,7 +109,95 @@ export async function retrieveServiceProcessDetails(
 export type ExtractDependenciesResult = {
   deps: Record<string, unknown>;
   flowMetadata: Array<{ apiName: string; xmlContent: string }>;
+  flowIntents: {
+    intakeFlow?: FlowDeploymentIntent;
+    fulfillmentFlow?: FlowDeploymentIntent;
+  };
 };
+
+type FlowSelection = {
+  flowIntent?: FlowDeploymentIntent;
+  apiNameToFetch?: string;
+};
+
+async function resolveIntakeFlowSelection(
+  intakeForm: Record<string, unknown> | undefined,
+  connection: Connection,
+  logger?: Logger
+): Promise<FlowSelection> {
+  if (!intakeForm) return {};
+  const intakeFormType = (intakeForm.type as string | undefined) ?? 'Flow';
+  logger?.debug(`Intake form type: ${intakeFormType}`);
+  if (intakeFormType !== 'Flow') return {};
+
+  const intakeFormApiName = intakeForm.apiName as string | undefined;
+  const intakeFormNamespacePrefix = (intakeForm.namespacePrefix as string | null) ?? null;
+  if (!intakeFormApiName) return {};
+
+  const flowIntent = (await getFlowDeploymentIntentByName(
+    connection,
+    intakeFormApiName,
+    intakeFormNamespacePrefix,
+    'regular'
+  )) ?? {
+    apiName: intakeFormApiName,
+    namespace: intakeFormNamespacePrefix,
+    deploymentIntent: 'deploy',
+    flowType: 'regular',
+  };
+
+  if (flowIntent.deploymentIntent === 'link') {
+    logger?.debug(
+      `Skipping intake flow retrieval (intent=link): ${intakeFormApiName} (namespace: ${
+        intakeFormNamespacePrefix ?? 'none'
+      })`
+    );
+    return { flowIntent };
+  }
+
+  logger?.debug(`Added intake flow to retrieve (intent=deploy): ${intakeFormApiName}`);
+  return { flowIntent, apiNameToFetch: intakeFormApiName };
+}
+
+async function resolveFulfillmentFlowSelection(
+  fulfillmentFlow: Record<string, unknown> | undefined,
+  connection: Connection,
+  logger?: Logger
+): Promise<FlowSelection> {
+  if (!fulfillmentFlow) return {};
+
+  const fulfillmentFlowApiName = fulfillmentFlow.apiName as string | undefined;
+  const fulfillmentFlowNamespacePrefix = (fulfillmentFlow.namespacePrefix as string | null) ?? null;
+  if (!fulfillmentFlowApiName) return {};
+
+  const flowType =
+    fulfillmentFlow.type === 'FlowOrchestrator' || fulfillmentFlow.type === 'FLOW_ORCHESTRATOR'
+      ? 'orchestrator'
+      : 'regular';
+  const flowIntent = (await getFlowDeploymentIntentByName(
+    connection,
+    fulfillmentFlowApiName,
+    fulfillmentFlowNamespacePrefix,
+    flowType
+  )) ?? {
+    apiName: fulfillmentFlowApiName,
+    namespace: fulfillmentFlowNamespacePrefix,
+    deploymentIntent: 'deploy',
+    flowType,
+  };
+
+  if (flowIntent.deploymentIntent === 'link') {
+    logger?.debug(
+      `Skipping fulfillment flow retrieval (intent=link): ${fulfillmentFlowApiName} (namespace: ${
+        fulfillmentFlowNamespacePrefix ?? 'none'
+      })`
+    );
+    return { flowIntent };
+  }
+
+  logger?.debug(`Added fulfillment flow to retrieve (intent=deploy): ${fulfillmentFlowApiName}`);
+  return { flowIntent, apiNameToFetch: fulfillmentFlowApiName };
+}
 
 export async function extractServiceProcessDependencies(
   serviceProcessData: Record<string, unknown>,
@@ -121,44 +209,27 @@ export async function extractServiceProcessDependencies(
   const serviceProcessDeps: Record<string, unknown> = {};
   const intakeForm = serviceProcessData.intakeForm as Record<string, unknown> | undefined;
   const fulfillmentFlow = serviceProcessData.fulfillmentFlow as Record<string, unknown> | undefined;
+  const flowIntents: {
+    intakeFlow?: FlowDeploymentIntent;
+    fulfillmentFlow?: FlowDeploymentIntent;
+  } = {};
 
   const flowApiNames: string[] = [];
-
-  if (intakeForm) {
-    const intakeFormType = (intakeForm.type as string | undefined) ?? 'Flow';
-    logger?.debug(`Intake form type: ${intakeFormType}`);
-    if (intakeFormType === 'Flow') {
-      const intakeFormApiName = intakeForm.apiName as string | undefined;
-      const intakeFormNamespacePrefix = intakeForm.namespacePrefix as string | undefined;
-
-      if (intakeFormApiName && !intakeFormNamespacePrefix) {
-        flowApiNames.push(intakeFormApiName);
-        logger?.debug(`Added intake flow to retrieve: ${intakeFormApiName}`);
-      } else if (intakeFormNamespacePrefix) {
-        logger?.debug(
-          `Skipping namespaced intake flow: ${
-            intakeFormApiName ?? '(no api name)'
-          } (namespace: ${intakeFormNamespacePrefix})`
-        );
-      }
-    }
-    // Omniscript intake form is not fetched; user is notified via getRetrievingMetadataLines
+  const intakeSelection = await resolveIntakeFlowSelection(intakeForm, connection, logger);
+  if (intakeSelection.flowIntent) {
+    flowIntents.intakeFlow = intakeSelection.flowIntent;
   }
+  if (intakeSelection.apiNameToFetch) {
+    flowApiNames.push(intakeSelection.apiNameToFetch);
+  }
+  // Omniscript intake form is not fetched; user is notified via getRetrievingMetadataLines
 
-  if (fulfillmentFlow) {
-    const fulfillmentFlowApiName = fulfillmentFlow.apiName as string | undefined;
-    const fulfillmentFlowNamespacePrefix = fulfillmentFlow.namespacePrefix as string | undefined;
-
-    if (fulfillmentFlowApiName && !fulfillmentFlowNamespacePrefix) {
-      flowApiNames.push(fulfillmentFlowApiName);
-      logger?.debug(`Added fulfillment flow to retrieve: ${fulfillmentFlowApiName}`);
-    } else if (fulfillmentFlowNamespacePrefix) {
-      logger?.debug(
-        `Skipping namespaced fulfillment flow: ${
-          fulfillmentFlowApiName ?? '(no api name)'
-        } (namespace: ${fulfillmentFlowNamespacePrefix})`
-      );
-    }
+  const fulfillmentSelection = await resolveFulfillmentFlowSelection(fulfillmentFlow, connection, logger);
+  if (fulfillmentSelection.flowIntent) {
+    flowIntents.fulfillmentFlow = fulfillmentSelection.flowIntent;
+  }
+  if (fulfillmentSelection.apiNameToFetch) {
+    flowApiNames.push(fulfillmentSelection.apiNameToFetch);
   }
 
   const flowMetadata: Array<{ apiName: string; xmlContent: string }> = [];
@@ -189,9 +260,10 @@ export async function extractServiceProcessDependencies(
       }
     }
   } else {
-    logger?.debug('No flows to retrieve (all flows are namespaced or missing)');
+    logger?.debug('No flows to retrieve (all flow intents are link or flow API names are missing)');
   }
-  return { deps: serviceProcessDeps, flowMetadata };
+
+  return { deps: serviceProcessDeps, flowMetadata, flowIntents };
 }
 
 /**
@@ -323,11 +395,11 @@ export async function fetchFlows(
   }
 }
 
-async function generateDeploymentMetadata(
+function generateDeploymentMetadata(
   serviceProcessData: Record<string, unknown>,
-  connection: Connection,
+  flowIntents: { intakeFlow?: FlowDeploymentIntent; fulfillmentFlow?: FlowDeploymentIntent },
   logger?: Logger
-): Promise<DeploymentMetadata> {
+): DeploymentMetadata {
   const deploymentMetadata: DeploymentMetadata = {
     version: '1.0',
   };
@@ -336,61 +408,18 @@ async function generateDeploymentMetadata(
   const intakeForm = serviceProcessData.intakeForm as Record<string, unknown> | undefined;
   const intakeFormType = intakeForm != null ? (intakeForm.type as string) ?? 'Flow' : undefined;
   if (intakeForm?.apiName && intakeFormType === 'Flow') {
-    const flowType = 'regular'; // Intake flows are always regular
-    const apiName = intakeForm.apiName as string;
-    const namespace = (intakeForm.namespacePrefix as string | null) ?? null;
-
-    logger?.debug(`Determining deployment intent for intake flow: ${apiName} (namespace: ${namespace ?? 'none'})`);
-    // Query FlowRecord by ApiName+NamespacePrefix and determine deployment intent
-    const flowIntent = await getFlowDeploymentIntentByName(connection, apiName, namespace, flowType);
-
-    if (flowIntent) {
-      deploymentMetadata.intakeFlow = flowIntent;
-      logger?.debug(`Intake flow intent: ${flowIntent.deploymentIntent}`);
-    } else {
-      // Flow not found - default to deploy intent
-      deploymentMetadata.intakeFlow = {
-        apiName,
-        namespace,
-        deploymentIntent: 'deploy',
-        flowType: 'regular',
-      };
-      logger?.debug('Intake flow not found in target, defaulting to deploy intent');
+    if (flowIntents.intakeFlow) {
+      deploymentMetadata.intakeFlow = flowIntents.intakeFlow;
+      logger?.debug(`Intake flow intent: ${flowIntents.intakeFlow.deploymentIntent}`);
     }
   }
 
   // Process fulfillment flow
   const fulfillmentFlow = serviceProcessData.fulfillmentFlow as Record<string, unknown> | undefined;
   if (fulfillmentFlow?.apiName) {
-    // Check if it's an orchestrator flow
-    const flowType =
-      fulfillmentFlow.type === 'FlowOrchestrator' || fulfillmentFlow.type === 'FLOW_ORCHESTRATOR'
-        ? 'orchestrator'
-        : 'regular';
-
-    const apiName = fulfillmentFlow.apiName as string;
-    const namespace = (fulfillmentFlow.namespacePrefix as string | null) ?? null;
-
-    logger?.debug(
-      `Determining deployment intent for fulfillment flow: ${apiName} (type: ${flowType}, namespace: ${
-        namespace ?? 'none'
-      })`
-    );
-    // Query FlowRecord/FlowOrchestration by ApiName+NamespacePrefix and determine deployment intent
-    const flowIntent = await getFlowDeploymentIntentByName(connection, apiName, namespace, flowType);
-
-    if (flowIntent) {
-      deploymentMetadata.fulfillmentFlow = flowIntent;
-      logger?.debug(`Fulfillment flow intent: ${flowIntent.deploymentIntent}`);
-    } else {
-      // Flow not found - default to deploy intent
-      deploymentMetadata.fulfillmentFlow = {
-        apiName,
-        namespace,
-        deploymentIntent: 'deploy',
-        flowType,
-      };
-      logger?.debug('Fulfillment flow not found in target, defaulting to deploy intent');
+    if (flowIntents.fulfillmentFlow) {
+      deploymentMetadata.fulfillmentFlow = flowIntents.fulfillmentFlow;
+      logger?.debug(`Fulfillment flow intent: ${flowIntents.fulfillmentFlow.deploymentIntent}`);
     }
   }
 
@@ -401,6 +430,10 @@ export async function generateZippedArtifacts(
   request: ServiceProcessRetrieveRequest,
   serviceProcessData: Record<string, unknown>,
   serviceProcessDeps: Record<string, unknown>,
+  flowIntents: {
+    intakeFlow?: FlowDeploymentIntent;
+    fulfillmentFlow?: FlowDeploymentIntent;
+  },
   retrieveStages?: RetrieveStages,
   logger?: Logger
 ): Promise<string> {
@@ -417,7 +450,7 @@ export async function generateZippedArtifacts(
 
   // Single combined metadata file (org + service process flows)
   logger?.debug('Generating deployment metadata');
-  const serviceProcessMetadata = await generateDeploymentMetadata(serviceProcessData, request.connection, logger);
+  const serviceProcessMetadata = generateDeploymentMetadata(serviceProcessData, flowIntents, logger);
   const combinedMetadata = {
     version: '1.0',
     org: {
@@ -434,7 +467,7 @@ export async function generateZippedArtifacts(
   zip.file('service-process.metadata.json', metadataJson);
   logger?.debug(`Added service-process.metadata.json to ZIP (${metadataJson.length} bytes)`);
 
-  const flowMetadataFolder = zip.folder('metadata')?.folder('flows');
+  let flowMetadataFolder: JSZip | null | undefined;
 
   // Extract apiNames from serviceProcessData (templateData.json)
   const getFlowApiName = (flowData: unknown): string | undefined => {
@@ -454,6 +487,7 @@ export async function generateZippedArtifacts(
   const fulfillmentFlowApiName = getFlowApiName(serviceProcessData.fulfillmentFlow);
 
   if (serviceProcessDeps.intakeForm && intakeFormApiName) {
+    flowMetadataFolder ??= zip.folder('metadata')?.folder('flows');
     const intakeFormXmlContent = serviceProcessDeps.intakeForm as string;
     flowMetadataFolder?.file(`${intakeFormApiName}.flow-meta.xml`, intakeFormXmlContent);
     logger?.debug(
@@ -462,6 +496,7 @@ export async function generateZippedArtifacts(
   }
 
   if (serviceProcessDeps.fulfillmentForm && fulfillmentFlowApiName) {
+    flowMetadataFolder ??= zip.folder('metadata')?.folder('flows');
     const fulfillmentFormXmlContent = serviceProcessDeps.fulfillmentForm as string;
     flowMetadataFolder?.file(`${fulfillmentFlowApiName}.flow-meta.xml`, fulfillmentFormXmlContent);
     logger?.debug(
@@ -604,12 +639,11 @@ export async function retrieveServiceProcess(
     retrieveStages?.startPhase('Retrieving metadata');
     currentPhase = 'Retrieving metadata';
     logger?.info('Retrieving metadata');
-    const { deps: serviceProcessDeps, flowMetadata } = await extractServiceProcessDependencies(
-      serviceProcessData,
-      request.connection,
-      request.outputDir,
-      logger
-    );
+    const {
+      deps: serviceProcessDeps,
+      flowMetadata,
+      flowIntents,
+    } = await extractServiceProcessDependencies(serviceProcessData, request.connection, request.outputDir, logger);
     logger?.debug(`Retrieved ${flowMetadata.length} flow metadata file(s)`);
     const retrievingLines = getRetrievingMetadataLines(serviceProcessData, flowMetadata);
     retrieveStages?.setRetrievingMetadataLines(retrievingLines);
@@ -625,6 +659,7 @@ export async function retrieveServiceProcess(
       request,
       serviceProcessData,
       serviceProcessDeps,
+      flowIntents,
       retrieveStages,
       logger
     );

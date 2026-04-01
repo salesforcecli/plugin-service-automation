@@ -19,7 +19,7 @@ All other dependencies must already exist in the target org. Examples of these d
 
 - Apex classes used in flows
 - Apex classes referenced by the preprocessor
-- Unified Catalog context definition whitelisting
+- Unified Catalog context definition allowlisting
 
 If any required dependency is missing in the org, the deployment fails.
 
@@ -29,7 +29,7 @@ Path to the ZIP file that contains the Service Process metadata to deploy.
 
 # flags.input-zip.description
 
-You typically geneerate this ZIP file with the `service-process retrieve` CLI command. The ZIP file contains the Service Process definition and supported metadata.
+You typically generate this ZIP file with the `service-process retrieve` CLI command. The ZIP file contains the Service Process definition and supported metadata.
 
 # flags.link-intake.summary
 
