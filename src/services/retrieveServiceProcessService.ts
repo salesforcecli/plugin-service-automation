@@ -333,6 +333,12 @@ export async function fetchFlows(
   outputDir: string,
   logger?: Logger
 ): Promise<Array<{ apiName: string; xmlContent: string }>> {
+  const toShortErrorMessage = (error: unknown): string => {
+    const raw = error instanceof Error ? error.message : String(error);
+    const firstLine = raw.split('\n')[0]?.trim();
+    return firstLine && firstLine.length > 0 ? firstLine : 'Unknown error';
+  };
+
   if (!flowApiNames || flowApiNames.length === 0) {
     return [];
   }
@@ -354,7 +360,16 @@ export async function fetchFlows(
       output: tempRetrieveDir,
       merge: true,
     });
-    await retrieveResult.pollStatus();
+    const pollResult = await retrieveResult.pollStatus();
+    const retrieveResponse = (pollResult as { response?: unknown }).response ?? pollResult;
+    const status = (retrieveResponse as { status?: string })?.status;
+    if (status !== 'Succeeded' && status !== 'Success') {
+      const errorMessage =
+        (retrieveResponse as { errorMessage?: string; message?: string })?.errorMessage ??
+        (retrieveResponse as { errorMessage?: string; message?: string })?.message ??
+        'Unknown Metadata API retrieve error';
+      throw new Error(`Metadata API retrieve failed: ${errorMessage}`);
+    }
     await publishLifecycleMetric(logger, 'spMetadataRetrieval', {
       metadataTypes: 'Flow',
       flowCount: flowApiNames.length,
@@ -380,15 +395,16 @@ export async function fetchFlows(
     }
     return flowMetadata;
   } catch (error) {
+    const shortMessage = toShortErrorMessage(error);
     await publishLifecycleMetric(logger, 'spMetadataRetrieval', {
       metadataTypes: 'Flow',
       flowCount: flowApiNames.length,
       stepExecutionDurationMs: 0,
       status: 'FAILURE',
-      errorTrigger: error instanceof Error ? error.message : String(error),
+      errorTrigger: shortMessage,
     });
-    logger?.error(`Flow fetch failed: ${error instanceof Error ? error.message : String(error)}`);
-    throw new Error(`Failed to fetch flow metadata: ${error instanceof Error ? error.message : String(error)}`);
+    logger?.error(`Flow fetch failed: ${shortMessage}`);
+    throw new Error(`Failed to fetch flow metadata: ${shortMessage}`, { cause: error });
   } finally {
     logger?.debug(`Cleaning up temporary directory: ${tempRetrieveDir}`);
     await removeTemporaryDirectory(tempRetrieveDir, true);
@@ -701,7 +717,6 @@ export async function retrieveServiceProcess(
     logger?.error(
       `Retrieve failed in phase "${currentPhase}": ${error instanceof Error ? error.message : String(error)}`
     );
-    logger?.debug(`Retrieve failed (raw): ${error instanceof Error ? error.stack ?? error.message : String(error)}`);
     retrieveStages?.failPhase(currentPhase, error instanceof Error ? error : new Error(String(error)));
     throw error;
   }

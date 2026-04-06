@@ -28,6 +28,20 @@ import type { ValidationContext } from '../../validation/types.js';
 Messages.importMessagesDirectoryFromMetaUrl(import.meta.url);
 const messages = Messages.loadMessages('@salesforce/plugin-service-automation', 'service-process.retrieve');
 
+function getRetrieveFailureRawForDebug(error: unknown): string {
+  if (error instanceof Error && error.cause !== undefined) {
+    const { cause } = error;
+    if (cause instanceof Error) {
+      return cause.stack ?? cause.message;
+    }
+    return String(cause);
+  }
+  if (error instanceof Error) {
+    return error.stack ?? error.message;
+  }
+  return String(error);
+}
+
 /** JSON output shape. */
 export type ServiceProcessRetrieveResult = RetrieveResult;
 
@@ -122,7 +136,7 @@ export default class ServiceProcessRetrieve extends SfCommand<ServiceProcessRetr
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       logger.error(`Retrieve failed: ${errorMessage}`);
-      logger.debug(`Retrieve failed (raw): ${error instanceof Error ? error.stack ?? error.message : String(error)}`);
+      logger.debug(`Retrieve failed (raw): ${getRetrieveFailureRawForDebug(error)}`);
       if (!this.jsonEnabled()) {
         retrieveStages.stop();
       }
