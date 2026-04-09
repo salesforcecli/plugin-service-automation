@@ -1,0 +1,52 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$ref": "#/definitions/ServiceProcessListResult",
+  "definitions": {
+    "ServiceProcessListResult": {
+      "type": "object",
+      "properties": {
+        "serviceProcesses": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ServiceProcessDetail"
+          }
+        },
+        "count": {
+          "type": "number"
+        },
+        "total": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "serviceProcesses",
+        "count",
+        "total"
+      ],
+      "additionalProperties": false
+    },
+    "ServiceProcessDetail": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "status"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

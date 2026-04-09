@@ -1,149 +1,246 @@
-**NOTE: This template for sf plugins is not yet official. Please consult with the Platform CLI team before using this template.**
-
-# plugin-service-automation
+# Service Process Automation Plugin
 
 [![NPM](https://img.shields.io/npm/v/@salesforce/plugin-service-automation.svg?label=@salesforce/plugin-service-automation)](https://www.npmjs.com/package/@salesforce/plugin-service-automation) [![Downloads/week](https://img.shields.io/npm/dw/@salesforce/plugin-service-automation.svg)](https://npmjs.org/package/@salesforce/plugin-service-automation) [![License](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](https://opensource.org/license/apache-2-0)
 
-## Using the template
+Service automation transforms manual tasks into orchestrated workflows—from intake forms to fulfillment—delivering consistency, scalability, and speed. A Service Process combines Data (records) and Metadata (code and configuration). Migrating a process from Sandbox to Production typically requires manual export and deployment of interdependent components—an error-prone and time-consuming approach that can compromise tested configurations.
 
-This repository provides a template for creating a plugin for the Salesforce CLI. To convert this template to a working plugin:
+This plugin automates the extraction and deployment of Service Process, ensuring faster, safer deployments where the validated golden copy is exactly what reaches Production.
 
-1. Please get in touch with the Platform CLI team. We want to help you develop your plugin.
-2. Generate your plugin:
+### Supported Metadata Types
 
-   ```
-   sf plugins install dev
-   sf dev generate plugin
+- Service Process Attributes (anchor, custom, context)
+- Intake Flow
+- Fulfillment Flow
+- Preprocessor (Apex class must already exist in the target org)
 
-   git init -b main
-   git add . && git commit -m "chore: initial commit"
-   ```
+**Prerequisite:** All other dependencies (e.g., Apex used in flows, Unified Catalog context definition allowlisting) must already exist in the target org.
 
-3. Create your plugin's repo in the salesforcecli github org
-4. When you're ready, replace the contents of this README with the information you want.
+## Before You Begin
 
-## Learn about `sf` plugins
+- Install and authenticate the [Salesforce CLI](https://developer.salesforce.com/tools/sfdxcli).
+- Ensure your target org supports the Service Process API (minimum API version 66.0).
 
-Salesforce CLI plugins are based on the [oclif plugin framework](https://oclif.io/docs/introduction). Read the [plugin developer guide](https://developer.salesforce.com/docs/atlas.en-us.sfdx_cli_plugins.meta/sfdx_cli_plugins/cli_plugins_architecture_sf_cli.htm) to learn about Salesforce CLI plugin development.
+## Install the Plugin
 
-This repository contains a lot of additional scripts and tools to help with general Salesforce node development and enforce coding standards. You should familiarize yourself with some of the [node developer packages](#tooling) used by Salesforce. There is also a default circleci config using the [release management orb](https://github.com/forcedotcom/npm-release-management-orb) standards.
+```bash
+sf plugins install @salesforce/plugin-service-automation
+```
 
-Additionally, there are some additional tests that the Salesforce CLI will enforce if this plugin is ever bundled with the CLI. These test are included by default under the `posttest` script and it is required to keep these tests active in your plugin if you plan to have it bundled.
-
-### Tooling
-
-- [@salesforce/core](https://github.com/forcedotcom/sfdx-core)
-- [@salesforce/kit](https://github.com/forcedotcom/kit)
-- [@salesforce/sf-plugins-core](https://github.com/salesforcecli/sf-plugins-core)
-- [@salesforce/ts-types](https://github.com/forcedotcom/ts-types)
-- [@salesforce/ts-sinon](https://github.com/forcedotcom/ts-sinon)
-- [@salesforce/dev-config](https://github.com/forcedotcom/dev-config)
-- [@salesforce/dev-scripts](https://github.com/forcedotcom/dev-scripts)
-
-# Everything past here is only a suggestion as to what should be in your specific plugin's description
-
-This plugin is bundled with the [Salesforce CLI](https://developer.salesforce.com/tools/sfdxcli). For more information on the CLI, read the [getting started guide](https://developer.salesforce.com/docs/atlas.en-us.sfdx_setup.meta/sfdx_setup/sfdx_setup_intro.htm).
-
-We always recommend using the latest version of these commands bundled with the CLI, however, you can install a specific version or tag if needed.
-
-## Install
+To install a specific version:
 
 ```bash
 sf plugins install @salesforce/plugin-service-automation@x.y.z
 ```
 
-## Issues
+## Running the Plugin
 
-Please report any issues at https://github.com/forcedotcom/cli/issues
-
-## Contributing
-
-1. Please read our [Code of Conduct](CODE_OF_CONDUCT.md)
-2. Create a new issue before starting your project so that we can keep track of
-   what you are trying to add/fix. That way, we can also offer suggestions or
-   let you know if there is already an effort in progress.
-3. Fork this repository.
-4. [Build the plugin locally](#build)
-5. Create a _topic_ branch in your fork. Note, this step is recommended but technically not required if contributing using a fork.
-6. Edit the code in your fork.
-7. Write appropriate tests for your changes. Try to achieve at least 95% code coverage on any new code. No pull request will be accepted without unit tests.
-8. Sign CLA (see [CLA](#cla) below).
-9. Send us a pull request when you are done. We'll review your code, suggest any needed changes, and merge it in.
-
-### CLA
-
-External contributors will be required to sign a Contributor's License
-Agreement. You can do so by going to https://cla.salesforce.com/sign-cla.
-
-### Build
-
-To build the plugin locally, make sure to have yarn installed and run the following commands:
+After installation, use the `sf service-process` topic:
 
 ```bash
-# Clone the repository
-git clone git@github.com:salesforcecli/plugin-service-automation
+# List Service Processes in an org
+sf service-process list -o YOUR_ORG_ALIAS
 
-# Install the dependencies and compile
-yarn && yarn build
-```
+# Retrieve a Service Process zip to an org
+sf service-process retrieve -i 01txx0000008ABC -o devSandbox -d ./sp-artifacts
 
-To use your plugin, run using the local `./bin/dev` or `./bin/dev.cmd` file.
-
-```bash
-# Run using local run file.
-./bin/dev hello world
-```
-
-There should be no differences when running via the Salesforce CLI or using the local run file. However, it can be useful to link the plugin to do some additional testing or run your commands from anywhere on your machine.
-
-```bash
-# Link your plugin to the sf cli
-sf plugins link .
-# To verify
-sf plugins
+# Deploy a retrieved Service Process zip to an org
+sf service-process deploy -z ./service-process.zip -o prod
 ```
 
 ## Commands
 
 <!-- commands -->
 
-- [`sf hello world`](#sf-hello-world)
+- [`sf service-process deploy`](#sf-service-process-deploy)
+- [`sf service-process list`](#sf-service-process-list)
+- [`sf service-process retrieve`](#sf-service-process-retrieve)
 
-## `sf hello world`
+## `sf service-process deploy`
 
-Say hello.
+Deploy a Unified Catalog Service Process into a Salesforce org.
 
 ```
 USAGE
-  $ sf hello world [--json] [--flags-dir <value>] [-n <value>]
+  $ sf service-process deploy -o <value> -z <value> [--json] [--flags-dir <value>] [--api-version <value>] [--link-intake]
+    [--link-fulfillment]
 
 FLAGS
-  -n, --name=<value>  [default: World] The name of the person you'd like to say hello to.
+  -o, --target-org=<value>   (required) Username or alias of the target org. Not required if the `target-org`
+                             configuration variable is already set.
+  -z, --input-zip=<value>    (required) Path to the ZIP file that contains the Service Process metadata to deploy.
+      --api-version=<value>  Override the api version used for api requests made by this command
+      --link-fulfillment     Link an existing fulfillment artifact instead of deploying one.
+      --link-intake          Link an existing intake flow instead of deploying a new one.
 
 GLOBAL FLAGS
   --flags-dir=<value>  Import flag values from a directory.
   --json               Format output as json.
 
 DESCRIPTION
-  Say hello.
+  Deploy a Unified Catalog Service Process into a Salesforce org.
 
-  Say hello either to the world or someone you know.
+  A Unified Catalog Service Process defines a service automation workflow consisting of attributes, intake flows,
+  fulfillment flows, and preprocessors.
+
+  Use this command to deploy a Service Process packaged as a ZIP file (typically generated by the `service-process
+  retrieve` CLI command) into a target Salesforce org.
+
+  This command deploys supported Service Process metadata, including:
+
+  - Service Process Attributes (anchor, custom, context)
+  - Intake flow
+  - Fulfillment flow
+  - Preprocessor reference
+
+  All other dependencies must already exist in the target org. Examples of these dependencies include:
+
+  - Apex classes used in flows
+  - Apex classes referenced by the preprocessor
+  - Unified Catalog context definition allowlisting
+
+  If any required dependency is missing in the org, the deployment fails.
 
 EXAMPLES
-  Say hello to the world:
+  Deploy a Service Process from a ZIP file to an org with alias "prod":
 
-    $ sf hello world
+    $ sf service-process deploy --input-zip ./service-process.zip --target-org prod
 
-  Say hello to someone you know:
+  Deploy while linking an existing intake flow:
 
-    $ sf hello world --name Astro
+    $ sf service-process deploy --input-zip ./service-process.zip --target-org prod --link-intake
+
+  Deploy while linking existing intake and fulfillment artifacts:
+
+    $ sf service-process deploy --input-zip ./service-process.zip --target-org prod --link-intake --link-fulfillment
+
+  Run with debug logging written to the Salesforce CLI log file:
+  $ SF_LOG_LEVEL=debug sf service-process deploy --input-zip ./service-process.zip --target-org prod
+
+  Enable terminal debug output; assumes that debug namespaces are enabled:
+  $ DEBUG=sf:service-process-deploy sf service-process deploy --input-zip ./service-process.zip --target-org prod
 
 FLAG DESCRIPTIONS
-  -n, --name=<value>  The name of the person you'd like to say hello to.
+  -z, --input-zip=<value>  Path to the ZIP file that contains the Service Process metadata to deploy.
 
-    This person can be anyone in the world!
+    You typically generate this ZIP file with the `service-process retrieve` CLI command. The ZIP file contains the
+    Service Process definition and supported metadata.
+
+  --link-fulfillment  Link an existing fulfillment artifact instead of deploying one.
+
+    When specified, the command links an existing fulfillment artifact (flow or flow orchestrator) in the target org
+    instead of deploying the fulfillment flow from the ZIP file.
+
+  --link-intake  Link an existing intake flow instead of deploying a new one.
+
+    When specified, the command links the existing intake flow in the target org instead of deploying the intake flow
+    from the ZIP file.
 ```
 
-_See code: [src/commands/hello/world.ts](https://github.com/salesforcecli/plugin-service-automation/blob/1.1.76/src/commands/hello/world.ts)_
+_See code: [src/commands/service-process/deploy.ts](https://github.com/salesforcecli/plugin-service-automation/blob/1.0.0/src/commands/service-process/deploy.ts)_
+
+## `sf service-process list`
+
+List the available Unified Catalog Service Processes in a Salesforce org.
+
+```
+USAGE
+  $ sf service-process list -o <value> [--json] [--flags-dir <value>] [--api-version <value>] [--limit <value>]
+
+FLAGS
+  -o, --target-org=<value>   (required) Username or alias of the target org. Not required if the `target-org`
+                             configuration variable is already set.
+      --api-version=<value>  Override the api version used for api requests made by this command
+      --limit=<value>        [default: 1000] Maximum number of Service Processes to return.
+
+GLOBAL FLAGS
+  --flags-dir=<value>  Import flag values from a directory.
+  --json               Format output as json.
+
+DESCRIPTION
+  List the available Unified Catalog Service Processes in a Salesforce org.
+
+  A Unified Catalog Service Process defines a service automation workflow consisting of attributes, intake flows,
+  fulfillment flows, and preprocessors.
+
+  Use this command to list Unified Catalog Service Process records from the specified org and display their **Name** and
+  **Id** in a human-readable table.
+
+  To ensure predictable performance and avoid excessively large output, the command limits the number of records
+  returned. If the maximum limit is reached, the results are truncated and a warning is displayed.
+
+  Use the `--limit` flag to control the maximum number of Service Processes returned.
+
+EXAMPLES
+  List the available Service Processes in the org with alias "devSandbox"; use the default limit:
+
+    $ sf service-process list --target-org devSandbox
+
+  List up to 100 Service Processes:
+
+    $ sf service-process list --target-org devSandbox --limit 100
+```
+
+_See code: [src/commands/service-process/list.ts](https://github.com/salesforcecli/plugin-service-automation/blob/1.0.0/src/commands/service-process/list.ts)_
+
+## `sf service-process retrieve`
+
+Retrieve a Unified Catalog Service Process from a Salesforce org.
+
+```
+USAGE
+  $ sf service-process retrieve -i <value> -o <value> [--json] [--flags-dir <value>] [-d <value>] [--api-version
+  <value>]
+
+FLAGS
+  -d, --output-dir=<value>          Directory where the retrieved Service Process artifacts and the generated ZIP file
+                                    are written. If not specified, artifacts are written to `./service-process`.
+  -i, --service-process-id=<value>  (required) ID of the Unified Catalog Service Process to retrieve from the source
+                                    org.
+  -o, --target-org=<value>          (required) Username or alias of the target org. Not required if the `target-org`
+                                    configuration variable is already set.
+      --api-version=<value>         Override the api version used for api requests made by this command
+
+GLOBAL FLAGS
+  --flags-dir=<value>  Import flag values from a directory.
+  --json               Format output as json.
+
+DESCRIPTION
+  Retrieve a Unified Catalog Service Process from a Salesforce org.
+
+  A Unified Catalog Service Process defines a service automation workflow consisting of attributes, intake flows,
+  fulfillment flows, and preprocessors.
+
+  Use this command to retrieve a Unified Catalog Service Process from the specified Salesforce org and package it into a
+  ZIP file. You can then deploy this ZIP file to another org.
+
+  The command downloads the Service Process definition, identifies supported dependent metadata, retrieves those
+  components, and bundles everything into a deployable artifact.
+
+  Supported metadata retrieved by this command includes:
+
+  - Service Process Attributes (anchor, custom, context)
+  - Intake flow
+  - Fulfillment flow
+  - Preprocessor reference
+
+  Other dependencies, such as Apex classes used by flows or preprocessors, aren't retrieved and must already exist in
+  the target org before deployment.
+
+EXAMPLES
+  Retrieve a Service Process using its ID from the org with alias "devSandbox":
+
+    $ sf service-process retrieve --service-process-id 0SPxx0000008ABC --target-org devSandbox
+
+  Retrieve a Service Process and write the artifacts to a custom directory:
+
+    $ sf service-process retrieve --service-process-id 0SPxx0000008ABC --target-org devSandbox --output-dir \
+      ./sp-artifacts
+```
+
+_See code: [src/commands/service-process/retrieve.ts](https://github.com/salesforcecli/plugin-service-automation/blob/1.0.0/src/commands/service-process/retrieve.ts)_
 
 <!-- commandsstop -->
+
+## Issues
+
+Report issues at [Salesforce CLI issues](https://github.com/forcedotcom/cli/issues).

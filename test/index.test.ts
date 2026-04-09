@@ -13,23 +13,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { execCmd, TestSession } from '@salesforce/cli-plugins-testkit';
+
 import { expect } from 'chai';
+import plugin from '../src/index.js';
 
-describe('service-process deploy NUTs', () => {
-  let session: TestSession;
-
-  before(async () => {
-    session = await TestSession.create({ devhubAuthStrategy: 'NONE' });
-  });
-
-  after(async () => {
-    await session?.clean();
-  });
-
-  it('should display hello world', () => {
-    const command = 'service-process deploy --target-org test@org.com --input-dir ./schemas';
-    const output = execCmd(command, { ensureExitCode: 0 }).shellOutput.stdout;
-    expect(output).to.contain('hello world');
+describe('plugin entry (src/index.ts)', () => {
+  it('exports default empty object', () => {
+    expect(plugin).to.be.an('object');
+    expect(plugin).to.deep.equal({});
   });
 });

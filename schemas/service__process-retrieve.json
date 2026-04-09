@@ -1,0 +1,61 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$ref": "#/definitions/ServiceProcessRetrieveResult",
+  "definitions": {
+    "ServiceProcessRetrieveResult": {
+      "$ref": "#/definitions/RetrieveResult",
+      "description": "JSON output shape."
+    },
+    "RetrieveResult": {
+      "type": "object",
+      "properties": {
+        "success": {
+          "type": "boolean"
+        },
+        "serviceProcess": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            }
+          },
+          "required": ["id", "name"],
+          "additionalProperties": false
+        },
+        "zipFilePath": {
+          "type": "string"
+        },
+        "files": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/RetrieveResultFile"
+          }
+        }
+      },
+      "required": ["success", "serviceProcess", "zipFilePath", "files"],
+      "additionalProperties": false,
+      "description": "Result payload for --json output."
+    },
+    "RetrieveResultFile": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string",
+          "enum": ["ServiceProcessDetails", "ServiceProcessMetadata", "Flow"]
+        },
+        "filePath": {
+          "type": "string"
+        }
+      },
+      "required": ["name", "type", "filePath"],
+      "additionalProperties": false,
+      "description": "Single file entry in the retrieve result."
+    }
+  }
+}

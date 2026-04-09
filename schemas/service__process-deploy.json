@@ -3,14 +3,176 @@
   "$ref": "#/definitions/ServiceProcessDeployResult",
   "definitions": {
     "ServiceProcessDeployResult": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/DeployResult"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "string"
+            },
+            "serviceProcessId": {
+              "type": "string"
+            }
+          },
+          "required": ["path"],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "DeployResult": {
       "type": "object",
       "properties": {
+        "package": {
+          "$ref": "#/definitions/PackageInfo"
+        },
+        "options": {
+          "$ref": "#/definitions/DeployOptions"
+        },
+        "serviceProcess": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ServiceProcessInfo"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "errors": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ErrorInfo"
+          }
+        },
+        "rollback": {
+          "$ref": "#/definitions/RollbackInfo"
+        }
+      },
+      "required": ["package", "options", "serviceProcess"],
+      "additionalProperties": false,
+      "description": "Result object (success or failure)"
+    },
+    "PackageInfo": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "zip"
+        },
         "path": {
           "type": "string"
         }
       },
-      "required": ["path"],
-      "additionalProperties": false
+      "required": ["type", "path"],
+      "additionalProperties": false,
+      "description": "Package information (zip file)"
+    },
+    "DeployOptions": {
+      "type": "object",
+      "properties": {
+        "linkIntake": {
+          "type": "boolean"
+        },
+        "linkFulfillment": {
+          "type": "boolean"
+        }
+      },
+      "required": ["linkIntake", "linkFulfillment"],
+      "additionalProperties": false,
+      "description": "Deploy options (CLI flags)"
+    },
+    "ServiceProcessInfo": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "created": {
+          "type": "boolean"
+        },
+        "artifacts": {
+          "$ref": "#/definitions/ServiceProcessArtifacts"
+        }
+      },
+      "required": ["id", "name", "created", "artifacts"],
+      "additionalProperties": false,
+      "description": "Service Process information"
+    },
+    "ServiceProcessArtifacts": {
+      "type": "object",
+      "properties": {
+        "intakeFlow": {
+          "$ref": "#/definitions/ArtifactInfo"
+        },
+        "fulfillmentFlow": {
+          "$ref": "#/definitions/ArtifactInfo"
+        },
+        "preprocessor": {
+          "$ref": "#/definitions/ArtifactInfo"
+        }
+      },
+      "additionalProperties": false,
+      "description": "Artifacts attached to the Service Process"
+    },
+    "ArtifactInfo": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "deployed": {
+          "type": "boolean"
+        },
+        "linked": {
+          "type": "boolean"
+        }
+      },
+      "required": ["type", "name", "deployed", "linked"],
+      "additionalProperties": false,
+      "description": "Artifact information (flow, preprocessor, etc.)"
+    },
+    "ErrorInfo": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        }
+      },
+      "required": ["type", "message"],
+      "additionalProperties": false,
+      "description": "Error information (only on failure)"
+    },
+    "RollbackInfo": {
+      "type": "object",
+      "properties": {
+        "attempted": {
+          "type": "boolean"
+        },
+        "succeeded": {
+          "type": "boolean"
+        },
+        "manualCleanupRequired": {
+          "type": "boolean"
+        }
+      },
+      "required": ["attempted", "succeeded"],
+      "additionalProperties": false,
+      "description": "Rollback information (only on failure after partial changes)"
     }
   }
 }

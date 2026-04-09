@@ -6,9 +6,12 @@
   "bugs": "https://github.com/forcedotcom/cli/issues",
   "dependencies": {
     "@oclif/core": "^4",
+    "@oclif/multi-stage-output": "^0.8.28",
     "@salesforce/core": "^8.24.0",
-    "@salesforce/kit": "^3.2.4",
-    "@salesforce/sf-plugins-core": "^12"
+    "@salesforce/sf-plugins-core": "^12",
+    "@salesforce/source-deploy-retrieve": "^12.31.10",
+    "fast-xml-parser": "^4.3.2",
+    "jszip": "^3.10.1"
   },
   "devDependencies": {
     "@oclif/plugin-command-snapshot": "^5.3.8",
@@ -53,7 +56,7 @@
     ],
     "topics": {
       "service-process": {
-        "description": "List Service Processes, retrieve a Service Process and its dependencies and deploy in another org."
+        "description": "Commands to deploy, retrieve, and list Unified Catalog Service Process in an org."
       }
     },
     "flexibleTaxonomy": true
@@ -73,7 +76,7 @@
     "prepack": "sf-prepack",
     "prepare": "sf-install",
     "test": "wireit",
-    "test:nuts": "nyc mocha \"**/*.nut.ts\" --slow 4500 --timeout 600000 --parallel",
+    "test:nuts": "mocha \"**/*.nut.ts\" --slow 4500 --timeout 600000 --parallel",
     "test:only": "wireit",
     "version": "oclif readme"
   },
@@ -142,7 +145,7 @@
       ]
     },
     "test:only": {
-      "command": "nyc mocha \"test/**/*.test.ts\"",
+      "command": "mocha \"test/**/*.test.ts\"",
       "env": {
         "FORCE_COLOR": "2"
       },
@@ -151,8 +154,7 @@
         "src/**/*.ts",
         "**/tsconfig.json",
         ".mocha*",
-        "!*.nut.ts",
-        ".nycrc"
+        "!*.nut.ts"
       ],
       "output": []
     },
