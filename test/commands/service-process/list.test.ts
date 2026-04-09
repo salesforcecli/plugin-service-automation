@@ -84,6 +84,11 @@ describe('service-process list', () => {
     expect(result.serviceProcesses[0]).to.have.keys('id', 'name', 'description', 'status');
   });
 
+  it('runs list command with --limit at minimum', async () => {
+    const result = await ServiceProcessList.run(['--target-org', 'test@org.com', '--limit', '1']);
+    expect(result.serviceProcesses).to.be.an('array');
+  });
+
   it('fails when --api-version is above org max', async () => {
     maxApiValidatorStub.resolves({
       name: 'MaxApiVersion',

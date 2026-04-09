@@ -60,11 +60,3 @@ When specified, the command links an existing fulfillment artifact (flow or flow
 - Deploy while linking existing intake and fulfillment artifacts:
 
   <%= config.bin %> <%= command.id %> --input-zip ./service-process.zip --target-org prod --link-intake --link-fulfillment
-
-- Run with debug logging written to the Salesforce CLI log file:
-
-  $ SF_LOG_LEVEL=debug <%= config.bin %> <%= command.id %> --input-zip ./service-process.zip --target-org prod
-
-- Enable terminal debug output; assumes that debug namespaces are enabled:
-
-  $ DEBUG=sf:service-process-deploy <%= config.bin %> <%= command.id %> --input-zip ./service-process.zip --target-org prod

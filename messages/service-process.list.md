@@ -16,6 +16,10 @@ Use the `--limit` flag to control the maximum number of Service Processes return
 
 Maximum number of Service Processes to return.
 
+# flags.limit.description
+
+Allowed range is 1–2000. Default is 1000.
+
 # examples
 
 - List the available Service Processes in the org with alias "devSandbox"; use the default limit:
