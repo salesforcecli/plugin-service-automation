@@ -53,6 +53,18 @@ describe('service process list NUTs', () => {
     expect(err).to.match(/limit|integer|Expected/i, err);
   });
 
+  it('should fail when --limit is below minimum (parse-time, no org)', () => {
+    const result = execCmd('service-process list --limit 0', { ensureExitCode: 'nonZero' });
+    const err = result.shellOutput.stderr;
+    expect(err).to.match(/limit|integer|greater than or equal to 1/i, err);
+  });
+
+  it('should fail when --limit is above maximum (parse-time, no org)', () => {
+    const result = execCmd('service-process list --limit 2001', { ensureExitCode: 'nonZero' });
+    const err = result.shellOutput.stderr;
+    expect(err).to.match(/limit|integer|less than or equal to 2000/i, err);
+  });
+
   it('should fail for an unknown service-process subcommand', () => {
     const result = execCmd('service-process not-a-real-command', { ensureExitCode: 'nonZero' });
     const err = result.shellOutput.stderr;

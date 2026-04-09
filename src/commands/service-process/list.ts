@@ -49,6 +49,9 @@ export default class ServiceProcessList extends SfCommand<ServiceProcessListResu
     'api-version': Flags.orgApiVersion(),
     limit: Flags.integer({
       summary: messages.getMessage('flags.limit.summary'),
+      description: messages.getMessage('flags.limit.description'),
+      min: 1,
+      max: 2000,
       default: 1000,
     }),
   };
@@ -175,7 +178,16 @@ export default class ServiceProcessList extends SfCommand<ServiceProcessListResu
           'User does not have required permissions to fetch service processes. Please check with your admin.'
         );
       }
-      throw new SfError('Something went wrong while fetching service processes. Please try again.');
+      const underlyingError = err instanceof Error ? err : new Error(String(err));
+      throw SfError.create({
+        message: `Something went wrong while fetching service processes: ${errorMessage}`,
+        name: 'ListServiceProcessFailed',
+        actions: [
+          'Use SF_LOG_LEVEL=debug DEBUG=sf:* to print debug details to the terminal.',
+          'Or run with SF_LOG_LEVEL=debug and review ~/.sf/sf-*.log.',
+        ],
+        cause: underlyingError,
+      });
     }
   }
 }
