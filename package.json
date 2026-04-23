@@ -10,7 +10,7 @@
     "@salesforce/core": "^8.24.0",
     "@salesforce/sf-plugins-core": "^12",
     "@salesforce/source-deploy-retrieve": "^12.31.10",
-    "fast-xml-parser": "^4.3.2",
+    "fast-xml-parser": "^5.7.0",
     "jszip": "^3.10.1"
   },
   "devDependencies": {
