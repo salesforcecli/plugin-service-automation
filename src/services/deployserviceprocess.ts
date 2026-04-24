@@ -36,6 +36,7 @@ import type { DeployedFlowNames } from '../workspace/serviceProcessTransformer.j
 import { ValidationRunner, builtInValidatorsWithMetadata } from '../validation/index.js';
 import type { ValidationContext } from '../validation/types.js';
 import { DeploymentStages, type TreeItem } from '../utils/deploymentStages.js';
+import { MIN_API_VERSION_TEMPLATE_DEPLOY_SERVICE_PROCESS_NAME, isApiVersionAtLeast } from '../utils/apiVersion.js';
 import { publishLifecycleMetric, toKilobytes } from '../utils/lifecycleMetrics.js';
 import { formatErrorResponseForLog } from '../utils/safeStringify.js';
 import { RollbackStages, ROLLBACK_SECTION_HEADER } from '../utils/rollbackStages.js';
@@ -597,13 +598,19 @@ export class DeployService {
       this.logger?.debug(`Upload completed in ${Date.now() - uploadStart}ms`);
       this.logger?.debug(`Upload full response: ${JSON.stringify(uploadResult)}`);
 
-      // Deploy template (always pass serviceProcessName from templateData when available)
-      const templateDeployBody = {
-        serviceProcessName: context.templateDataExtract?.name ?? '',
-        deploymentMode: 'CrossOrg',
-      };
+      // Deploy template: include serviceProcessName + deploymentMode body only when API >= MIN_API_VERSION_TEMPLATE_DEPLOY_SERVICE_PROCESS_NAME
+      const effectiveApiVersion = conn.getApiVersion();
+      const includeTemplateDeployBody = isApiVersionAtLeast(
+        effectiveApiVersion,
+        MIN_API_VERSION_TEMPLATE_DEPLOY_SERVICE_PROCESS_NAME
+      );
+      const templateDeployBody = includeTemplateDeployBody
+        ? { serviceProcessName: context.templateDataExtract?.name ?? '', deploymentMode: 'CrossOrg' }
+        : undefined;
       this.logger?.debug(
-        `Service Process creation API start (contentDocumentId=${contentDocumentId}, serviceProcessName=${templateDeployBody.serviceProcessName})`
+        `Service Process creation API start (contentDocumentId=${contentDocumentId}, serviceProcessName=${
+          templateDeployBody?.serviceProcessName ?? ''
+        })`
       );
       const spApiStart = Date.now();
       const templateDeployResponse = await deps.callTemplateDeploy(conn, contentDocumentId, templateDeployBody);

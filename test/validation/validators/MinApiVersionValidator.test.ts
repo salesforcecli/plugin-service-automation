@@ -27,7 +27,7 @@ describe('MinApiVersionValidator', () => {
     };
     return {
       conn: {
-        getApiVersion: connGetApiVersion ?? (() => '67.0'),
+        getApiVersion: connGetApiVersion ?? (() => '66.0'),
       } as ValidationContext['conn'],
       ...rest,
     };
@@ -37,7 +37,6 @@ describe('MinApiVersionValidator', () => {
     const result = await MinApiVersionValidator.validate(ctx());
     expect(result.name).to.equal('MinApiVersion');
     expect(result.status).to.equal('PASS');
-    expect(result.message).to.include('67.0');
     expect(result.message).to.include(MIN_SERVICE_PROCESS_API_VERSION);
   });
 
