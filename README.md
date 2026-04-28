@@ -113,12 +113,6 @@ EXAMPLES
 
     $ sf service-process deploy --input-zip ./service-process.zip --target-org prod --link-intake --link-fulfillment
 
-  Run with debug logging written to the Salesforce CLI log file:
-  $ SF_LOG_LEVEL=debug sf service-process deploy --input-zip ./service-process.zip --target-org prod
-
-  Enable terminal debug output; assumes that debug namespaces are enabled:
-  $ DEBUG=sf:service-process-deploy sf service-process deploy --input-zip ./service-process.zip --target-org prod
-
 FLAG DESCRIPTIONS
   -z, --input-zip=<value>  Path to the ZIP file that contains the Service Process metadata to deploy.
 
@@ -136,7 +130,7 @@ FLAG DESCRIPTIONS
     from the ZIP file.
 ```
 
-_See code: [src/commands/service-process/deploy.ts](https://github.com/salesforcecli/plugin-service-automation/blob/1.0.0/src/commands/service-process/deploy.ts)_
+_See code: [src/commands/service-process/deploy.ts](https://github.com/salesforcecli/plugin-service-automation/blob/0.1.0/src/commands/service-process/deploy.ts)_
 
 ## `sf service-process list`
 
@@ -178,9 +172,14 @@ EXAMPLES
   List up to 100 Service Processes:
 
     $ sf service-process list --target-org devSandbox --limit 100
+
+FLAG DESCRIPTIONS
+  --limit=<value>  Maximum number of Service Processes to return.
+
+    Allowed range is 1–2000. Default is 1000.
 ```
 
-_See code: [src/commands/service-process/list.ts](https://github.com/salesforcecli/plugin-service-automation/blob/1.0.0/src/commands/service-process/list.ts)_
+_See code: [src/commands/service-process/list.ts](https://github.com/salesforcecli/plugin-service-automation/blob/0.1.0/src/commands/service-process/list.ts)_
 
 ## `sf service-process retrieve`
 
@@ -237,7 +236,7 @@ EXAMPLES
       ./sp-artifacts
 ```
 
-_See code: [src/commands/service-process/retrieve.ts](https://github.com/salesforcecli/plugin-service-automation/blob/1.0.0/src/commands/service-process/retrieve.ts)_
+_See code: [src/commands/service-process/retrieve.ts](https://github.com/salesforcecli/plugin-service-automation/blob/0.1.0/src/commands/service-process/retrieve.ts)_
 
 <!-- commandsstop -->
 
