@@ -130,7 +130,7 @@ FLAG DESCRIPTIONS
     from the ZIP file.
 ```
 
-_See code: [src/commands/service-process/deploy.ts](https://github.com/salesforcecli/plugin-service-automation/blob/0.1.0/src/commands/service-process/deploy.ts)_
+_See code: [src/commands/service-process/deploy.ts](https://github.com/salesforcecli/plugin-service-automation/blob/1.1.1/src/commands/service-process/deploy.ts)_
 
 ## `sf service-process list`
 
@@ -179,7 +179,7 @@ FLAG DESCRIPTIONS
     Allowed range is 1–2000. Default is 1000.
 ```
 
-_See code: [src/commands/service-process/list.ts](https://github.com/salesforcecli/plugin-service-automation/blob/0.1.0/src/commands/service-process/list.ts)_
+_See code: [src/commands/service-process/list.ts](https://github.com/salesforcecli/plugin-service-automation/blob/1.1.1/src/commands/service-process/list.ts)_
 
 ## `sf service-process retrieve`
 
@@ -236,7 +236,7 @@ EXAMPLES
       ./sp-artifacts
 ```
 
-_See code: [src/commands/service-process/retrieve.ts](https://github.com/salesforcecli/plugin-service-automation/blob/0.1.0/src/commands/service-process/retrieve.ts)_
+_See code: [src/commands/service-process/retrieve.ts](https://github.com/salesforcecli/plugin-service-automation/blob/1.1.1/src/commands/service-process/retrieve.ts)_
 
 <!-- commandsstop -->
 
