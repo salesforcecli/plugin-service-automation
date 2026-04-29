@@ -1,3 +1,9 @@
+## [1.1.2](https://github.com/salesforcecli/plugin-service-automation/compare/1.1.1...1.1.2) (2026-04-29)
+
+### Bug Fixes
+
+- **deps:** bump yaml from 2.5.0 to 2.8.3 ([1426d1d](https://github.com/salesforcecli/plugin-service-automation/commit/1426d1da7580feadcb6df8db48fabbd26b27b032))
+
 ## [1.1.1](https://github.com/salesforcecli/plugin-service-automation/compare/1.1.0...1.1.1) (2026-04-29)
 
 ### Bug Fixes
