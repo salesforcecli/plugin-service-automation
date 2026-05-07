@@ -1,3 +1,9 @@
+## [1.1.3](https://github.com/salesforcecli/plugin-service-automation/compare/1.1.2...1.1.3) (2026-05-07)
+
+### Bug Fixes
+
+- **deps:** bump ip-address from 10.1.0 to 10.2.0 ([5812812](https://github.com/salesforcecli/plugin-service-automation/commit/5812812f265bd7ced32a06b11deaa40e10989acc))
+
 ## [1.1.2](https://github.com/salesforcecli/plugin-service-automation/compare/1.1.1...1.1.2) (2026-04-29)
 
 ### Bug Fixes
