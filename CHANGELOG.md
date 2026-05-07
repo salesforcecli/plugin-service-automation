@@ -1,3 +1,9 @@
+## [1.1.4](https://github.com/salesforcecli/plugin-service-automation/compare/1.1.3...1.1.4) (2026-05-07)
+
+### Bug Fixes
+
+- **deps:** bump basic-ftp from 5.3.0 to 5.3.1 ([4e7d406](https://github.com/salesforcecli/plugin-service-automation/commit/4e7d406e0900a1ff07a95355aa8dc18f6a30eccc))
+
 ## [1.1.3](https://github.com/salesforcecli/plugin-service-automation/compare/1.1.2...1.1.3) (2026-05-07)
 
 ### Bug Fixes
