@@ -1,3 +1,9 @@
+## [1.1.7](https://github.com/salesforcecli/plugin-service-automation/compare/1.1.6...1.1.7) (2026-05-09)
+
+### Bug Fixes
+
+- **deps:** bump lodash from 4.17.21 to 4.18.1 ([2059cfb](https://github.com/salesforcecli/plugin-service-automation/commit/2059cfb997b6cb230eb7791e4af6e1d371ca42dc))
+
 ## [1.1.6](https://github.com/salesforcecli/plugin-service-automation/compare/1.1.5...1.1.6) (2026-05-09)
 
 ### Bug Fixes
