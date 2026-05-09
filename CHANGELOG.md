@@ -1,3 +1,9 @@
+## [1.1.6](https://github.com/salesforcecli/plugin-service-automation/compare/1.1.5...1.1.6) (2026-05-09)
+
+### Bug Fixes
+
+- **deps:** bump fast-xml-builder from 1.1.5 to 1.2.0 ([38576a1](https://github.com/salesforcecli/plugin-service-automation/commit/38576a1daba11ec6b618dab7c2d0d7809bbde20a))
+
 ## [1.1.5](https://github.com/salesforcecli/plugin-service-automation/compare/1.1.4...1.1.5) (2026-05-09)
 
 ### Bug Fixes
