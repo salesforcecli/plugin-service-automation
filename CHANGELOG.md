@@ -1,3 +1,9 @@
+## [1.1.8](https://github.com/salesforcecli/plugin-service-automation/compare/1.1.7...1.1.8) (2026-05-29)
+
+### Bug Fixes
+
+- **deps:** bump ws from 8.18.0 to 8.21.0 ([c531555](https://github.com/salesforcecli/plugin-service-automation/commit/c53155596d6494dc8135cb514af7d0ede10c75b1))
+
 ## [1.1.7](https://github.com/salesforcecli/plugin-service-automation/compare/1.1.6...1.1.7) (2026-05-09)
 
 ### Bug Fixes
