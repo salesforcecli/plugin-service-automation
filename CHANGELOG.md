@@ -1,3 +1,9 @@
+## [1.1.10](https://github.com/salesforcecli/plugin-service-automation/compare/1.1.9...1.1.10) (2026-06-17)
+
+### Bug Fixes
+
+- **deps:** bump form-data from 4.0.4 to 4.0.6 ([14c4aaa](https://github.com/salesforcecli/plugin-service-automation/commit/14c4aaa2975931fc14eaca8f915985e21c27f476))
+
 ## [1.1.9](https://github.com/salesforcecli/plugin-service-automation/compare/1.1.8...1.1.9) (2026-06-17)
 
 ### Bug Fixes
