@@ -1,3 +1,9 @@
+## [1.1.11](https://github.com/salesforcecli/plugin-service-automation/compare/1.1.10...1.1.11) (2026-06-17)
+
+### Bug Fixes
+
+- **deps:** bump @babel/core from 7.25.2 to 7.29.7 ([62364a8](https://github.com/salesforcecli/plugin-service-automation/commit/62364a83fdc3c64c49c2456991b0ebe871e3dd6c))
+
 ## [1.1.10](https://github.com/salesforcecli/plugin-service-automation/compare/1.1.9...1.1.10) (2026-06-17)
 
 ### Bug Fixes
