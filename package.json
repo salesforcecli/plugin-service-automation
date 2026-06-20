@@ -14,7 +14,7 @@
     "jszip": "^3.10.1"
   },
   "devDependencies": {
-    "@oclif/plugin-command-snapshot": "^5.3.8",
+    "@oclif/plugin-command-snapshot": "^5.3.25",
     "@salesforce/cli-plugins-testkit": "^5.3.41",
     "@salesforce/dev-scripts": "^11.0.4",
     "@salesforce/plugin-command-reference": "^3.1.79",
