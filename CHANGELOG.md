@@ -1,3 +1,9 @@
+## [1.1.12](https://github.com/salesforcecli/plugin-service-automation/compare/1.1.11...1.1.12) (2026-06-27)
+
+### Bug Fixes
+
+- **deps:** bump @oclif/core from 4.11.7 to 4.11.11 ([6d73f24](https://github.com/salesforcecli/plugin-service-automation/commit/6d73f24a948a6aeef50286b161aabbb3f2dc4f1c))
+
 ## [1.1.11](https://github.com/salesforcecli/plugin-service-automation/compare/1.1.10...1.1.11) (2026-06-17)
 
 ### Bug Fixes
