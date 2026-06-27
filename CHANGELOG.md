@@ -1,3 +1,9 @@
+## [1.1.13](https://github.com/salesforcecli/plugin-service-automation/compare/1.1.12...1.1.13) (2026-06-27)
+
+### Bug Fixes
+
+- **deps:** bump fast-xml-parser from 5.7.0 to 5.9.3 ([ab586e8](https://github.com/salesforcecli/plugin-service-automation/commit/ab586e8ab6b90725266ccf7c88004514f60cd942))
+
 ## [1.1.12](https://github.com/salesforcecli/plugin-service-automation/compare/1.1.11...1.1.12) (2026-06-27)
 
 ### Bug Fixes
