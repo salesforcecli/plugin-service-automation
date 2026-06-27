@@ -9,7 +9,7 @@
     "@oclif/multi-stage-output": "^0.8.28",
     "@salesforce/core": "^8.24.0",
     "@salesforce/sf-plugins-core": "^12",
-    "@salesforce/source-deploy-retrieve": "^12.31.10",
+    "@salesforce/source-deploy-retrieve": "^12.36.7",
     "fast-xml-parser": "^5.9.3",
     "jszip": "^3.10.1"
   },
