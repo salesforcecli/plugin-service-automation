@@ -28,6 +28,7 @@ export type CatalogItemGetResponse = {
   fulfillmentFlow?: { id?: string };
   preProcessors?: Array<{ id?: string }>;
   contextDefinitionDevNameOrId?: string;
+  targetObject?: string;
 };
 
 export class CatalogItemPatcher {
@@ -37,7 +38,8 @@ export class CatalogItemPatcher {
     fulfillmentFlowDefinitionId: string | undefined,
     existingIntakeFormId: string | undefined,
     contextDefinitionDevNameOrId: string | undefined,
-    serviceProcessName?: string
+    serviceProcessName?: string,
+    targetObject?: string
   ): Record<string, unknown> {
     const intakeForm =
       intakeFormDefinitionId != null
@@ -65,7 +67,7 @@ export class CatalogItemPatcher {
       name: serviceProcessName ?? '',
       preProcessors: [],
       productRequests: [],
-      targetObject: 'Case',
+      targetObject: targetObject ?? 'Case',
       usedFor: 'ServiceProcess',
     };
     if (contextDefinitionDevNameOrId != null) {
@@ -121,15 +123,18 @@ export class CatalogItemPatcher {
 
     const existingIntakeFormId = catalogItem?.intakeForm?.id;
     const contextDefinitionDevNameOrId = catalogItem?.contextDefinitionDevNameOrId;
+    const targetObject = catalogItem?.targetObject;
     logger?.debug(`Fetched catalog item intakeForm.id: ${existingIntakeFormId ?? 'none'}`);
     logger?.debug(`Fetched catalog item contextDefinitionDevNameOrId: ${contextDefinitionDevNameOrId ?? 'none'}`);
+    logger?.debug(`Fetched catalog item targetObject: ${targetObject ?? 'none'}`);
 
     const catalogItemBody = CatalogItemPatcher.buildCatalogItemPatchBody(
       intakeFormDefinitionId,
       fulfillmentFlowDefinitionId,
       existingIntakeFormId,
       contextDefinitionDevNameOrId,
-      serviceProcessName
+      serviceProcessName,
+      targetObject
     );
 
     logger?.info(`Patching catalog item: ${catalogItemPath}`);

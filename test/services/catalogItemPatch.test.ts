@@ -90,6 +90,23 @@ describe('CatalogItemPatcher.buildCatalogItemPatchBody', () => {
     expect(body.name).to.equal('');
   });
 
+  it('preserves targetObject when provided', () => {
+    const body = CatalogItemPatcher.buildCatalogItemPatchBody(
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      'ServiceRequest'
+    );
+    expect(body.targetObject).to.equal('ServiceRequest');
+  });
+
+  it('falls back targetObject to Case when missing', () => {
+    const body = CatalogItemPatcher.buildCatalogItemPatchBody(undefined, undefined, undefined, undefined);
+    expect(body.targetObject).to.equal('Case');
+  });
+
   it('combines intakeForm Create, fulfillmentFlow, contextDefinitionDevNameOrId, and name', () => {
     const body = CatalogItemPatcher.buildCatalogItemPatchBody(
       '0HDxx000000001',
