@@ -1,3 +1,9 @@
+## [1.1.14](https://github.com/salesforcecli/plugin-service-automation/compare/1.1.13...1.1.14) (2026-06-29)
+
+### Bug Fixes
+
+- **deploy:** preserve target object during linking ([6ab7836](https://github.com/salesforcecli/plugin-service-automation/commit/6ab7836510bf3331f06d62dd2399431ff30a0cae))
+
 ## [1.1.13](https://github.com/salesforcecli/plugin-service-automation/compare/1.1.12...1.1.13) (2026-06-27)
 
 ### Bug Fixes
