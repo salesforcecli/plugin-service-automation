@@ -1,3 +1,9 @@
+## [1.1.15](https://github.com/salesforcecli/plugin-service-automation/compare/1.1.14...1.1.15) (2026-07-04)
+
+### Bug Fixes
+
+- **deps:** bump @oclif/multi-stage-output from 0.8.30 to 0.8.44 ([410ce74](https://github.com/salesforcecli/plugin-service-automation/commit/410ce74664abac705b2fcf1226c373e653eff717))
+
 ## [1.1.14](https://github.com/salesforcecli/plugin-service-automation/compare/1.1.13...1.1.14) (2026-06-29)
 
 ### Bug Fixes
