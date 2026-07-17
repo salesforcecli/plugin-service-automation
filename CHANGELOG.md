@@ -1,3 +1,9 @@
+## [1.1.16](https://github.com/salesforcecli/plugin-service-automation/compare/1.1.15...1.1.16) (2026-07-17)
+
+### Bug Fixes
+
+- **deps:** bump websocket-driver from 0.7.4 to 0.7.5 ([9907c5b](https://github.com/salesforcecli/plugin-service-automation/commit/9907c5b8e7c656a1045a30aa8276909fdd032288))
+
 ## [1.1.15](https://github.com/salesforcecli/plugin-service-automation/compare/1.1.14...1.1.15) (2026-07-04)
 
 ### Bug Fixes
