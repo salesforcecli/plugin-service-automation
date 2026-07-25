@@ -1,3 +1,9 @@
+## [1.1.17](https://github.com/salesforcecli/plugin-service-automation/compare/1.1.16...1.1.17) (2026-07-25)
+
+### Bug Fixes
+
+- **deps:** bump linkify-it from 5.0.1 to 5.0.2 ([e89fcbb](https://github.com/salesforcecli/plugin-service-automation/commit/e89fcbba0ebaa4c85c7e940093757da651d006cd))
+
 ## [1.1.16](https://github.com/salesforcecli/plugin-service-automation/compare/1.1.15...1.1.16) (2026-07-17)
 
 ### Bug Fixes
