@@ -46,6 +46,7 @@ const SUPPORTED_SERVICE_PROCESS_ELEMENTS = new Set([
   'intakeForm',
   'fulfillmentFlow',
   'preProcessors',
+  'allowsUpdate',
 ]);
 
 function filteredServiceProcessData(serviceProcessData: Record<string, unknown>): Record<string, unknown> {
@@ -80,6 +81,7 @@ export async function retrieveServiceProcessDetails(
       status: 'SUCCESS',
     });
     logger?.debug(`Service Process API response received: ${Object.keys(serviceProcessData).length} fields`);
+    logger?.debug(`Service Process API raw response: ${JSON.stringify(serviceProcessData, null, 2)}`);
     const filtered = filteredServiceProcessData(serviceProcessData);
     logger?.debug(`Filtered Service Process data: ${Object.keys(filtered).length} supported fields`);
     return filtered;

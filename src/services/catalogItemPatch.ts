@@ -29,6 +29,7 @@ export type CatalogItemGetResponse = {
   preProcessors?: Array<{ id?: string }>;
   contextDefinitionDevNameOrId?: string;
   targetObject?: string;
+  allowsUpdate?: boolean;
 };
 
 export class CatalogItemPatcher {
@@ -39,7 +40,8 @@ export class CatalogItemPatcher {
     existingIntakeFormId: string | undefined,
     contextDefinitionDevNameOrId: string | undefined,
     serviceProcessName?: string,
-    targetObject?: string
+    targetObject?: string,
+    allowsUpdate?: boolean
   ): Record<string, unknown> {
     const intakeForm =
       intakeFormDefinitionId != null
@@ -72,6 +74,9 @@ export class CatalogItemPatcher {
     };
     if (contextDefinitionDevNameOrId != null) {
       body.contextDefinitionDevNameOrId = contextDefinitionDevNameOrId;
+    }
+    if (allowsUpdate != null) {
+      body.allowsUpdate = allowsUpdate;
     }
     return body;
   }
@@ -124,9 +129,11 @@ export class CatalogItemPatcher {
     const existingIntakeFormId = catalogItem?.intakeForm?.id;
     const contextDefinitionDevNameOrId = catalogItem?.contextDefinitionDevNameOrId;
     const targetObject = catalogItem?.targetObject;
+    const allowsUpdate = catalogItem?.allowsUpdate;
     logger?.debug(`Fetched catalog item intakeForm.id: ${existingIntakeFormId ?? 'none'}`);
     logger?.debug(`Fetched catalog item contextDefinitionDevNameOrId: ${contextDefinitionDevNameOrId ?? 'none'}`);
     logger?.debug(`Fetched catalog item targetObject: ${targetObject ?? 'none'}`);
+    logger?.debug(`Fetched catalog item allowsUpdate: ${allowsUpdate ?? 'none'}`);
 
     const catalogItemBody = CatalogItemPatcher.buildCatalogItemPatchBody(
       intakeFormDefinitionId,
@@ -134,7 +141,8 @@ export class CatalogItemPatcher {
       existingIntakeFormId,
       contextDefinitionDevNameOrId,
       serviceProcessName,
-      targetObject
+      targetObject,
+      allowsUpdate
     );
 
     logger?.info(`Patching catalog item: ${catalogItemPath}`);
@@ -143,6 +151,7 @@ export class CatalogItemPatcher {
         intakeFormDefinitionId ?? 'none'
       }, fulfillmentDefId=${fulfillmentFlowDefinitionId ?? 'none'})`
     );
+    logger?.debug(`Catalog item PATCH request payload: ${JSON.stringify(catalogItemBody)}`);
     const patchStart = Date.now();
     try {
       const patchResponse = await patchConnect(conn, catalogItemPath, catalogItemBody);
