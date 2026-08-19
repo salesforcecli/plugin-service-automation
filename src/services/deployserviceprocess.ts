@@ -605,7 +605,6 @@ export class DeployService {
       this.logger?.debug(
         `Service Process creation API start (contentDocumentId=${contentDocumentId}, serviceProcessName=${templateDeployBody.serviceProcessName})`
       );
-      this.logger?.debug(`Service Process creation API request payload: ${JSON.stringify(templateDeployBody)}`);
       const spApiStart = Date.now();
       const templateDeployResponse = await deps.callTemplateDeploy(conn, contentDocumentId, templateDeployBody);
       await publishLifecycleMetric(this.logger, 'spCreationApi', {

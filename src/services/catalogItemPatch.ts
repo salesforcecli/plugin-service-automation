@@ -151,7 +151,6 @@ export class CatalogItemPatcher {
         intakeFormDefinitionId ?? 'none'
       }, fulfillmentDefId=${fulfillmentFlowDefinitionId ?? 'none'})`
     );
-    logger?.debug(`Catalog item PATCH request payload: ${JSON.stringify(catalogItemBody)}`);
     const patchStart = Date.now();
     try {
       const patchResponse = await patchConnect(conn, catalogItemPath, catalogItemBody);
