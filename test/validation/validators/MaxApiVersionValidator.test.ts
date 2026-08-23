@@ -24,9 +24,7 @@ describe('MaxApiVersionValidator', () => {
       connRetrieveMaxApiVersion?: () => Promise<string>;
     } = {}
   ): ValidationContext {
-    const { connRetrieveMaxApiVersion, ...rest } = overrides as Partial<ValidationContext> & {
-      connRetrieveMaxApiVersion?: () => Promise<string>;
-    };
+    const { connRetrieveMaxApiVersion, ...rest } = overrides;
     return {
       conn: {
         retrieveMaxApiVersion: connRetrieveMaxApiVersion ?? (async () => '67.0'),
