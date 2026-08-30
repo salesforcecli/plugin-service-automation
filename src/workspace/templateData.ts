@@ -43,7 +43,7 @@ function getFlowNameFromTemplate(value: unknown): string | undefined {
     value &&
     typeof value === 'object' &&
     'apiName' in value &&
-    typeof (value as { apiName: unknown }).apiName === 'string'
+    typeof (value).apiName === 'string'
   ) {
     return (value as { apiName: string }).apiName.trim();
   }
