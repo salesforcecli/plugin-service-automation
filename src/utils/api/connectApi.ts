@@ -56,7 +56,7 @@ export async function requestConnectApi<T = unknown>(
     if (typeof body === 'string' || Buffer.isBuffer(body) || ArrayBuffer.isView(body)) {
       requestInfo.body = body as HttpRequestArg['body'];
     } else {
-      requestInfo.body = JSON.stringify(body) as HttpRequestArg['body'];
+      requestInfo.body = JSON.stringify(body);
       if (headers['Content-Type'] === undefined && headers['content-type'] === undefined) {
         headers['Content-Type'] = 'application/json';
       }
