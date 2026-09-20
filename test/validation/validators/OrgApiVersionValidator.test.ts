@@ -21,9 +21,7 @@ import { OrgApiVersionValidator } from '../../../src/validation/validators/OrgAp
 describe('OrgApiVersionValidator', () => {
   /** Build context with a fake conn.getApiVersion so we don't stub Connection.prototype (avoids conflict with deploy tests). */
   function ctx(overrides: Partial<ValidationContext> & { connGetApiVersion?: () => string } = {}): ValidationContext {
-    const { connGetApiVersion, ...rest } = overrides as Partial<ValidationContext> & {
-      connGetApiVersion?: () => string;
-    };
+    const { connGetApiVersion, ...rest } = overrides;
     return {
       conn: {
         getApiVersion: connGetApiVersion ?? (() => '66.0'),

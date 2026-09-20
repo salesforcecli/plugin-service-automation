@@ -106,7 +106,7 @@ export class DeployService {
     this.runId = options.runId;
     this.linkIntake = options.linkIntake ?? false;
     this.linkFulfillment = options.linkFulfillment ?? false;
-    this.deps = { ...defaults, ...options.dependencies } as Required<DeployServiceProcessDependencies>;
+    this.deps = { ...defaults, ...options.dependencies };
   }
 
   /**

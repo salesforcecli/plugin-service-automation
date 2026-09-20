@@ -492,7 +492,7 @@ export async function generateZippedArtifacts(
       flowData &&
       typeof flowData === 'object' &&
       'apiName' in flowData &&
-      typeof (flowData as { apiName: unknown }).apiName === 'string'
+      typeof (flowData).apiName === 'string'
     ) {
       return (flowData as { apiName: string }).apiName.trim();
     }
