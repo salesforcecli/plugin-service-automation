@@ -35,7 +35,8 @@ type DiaVisitOptions = { actionType: 'createSvcRequest' } | { actionType: 'getSv
 
 /**
  * Transforms an intake form flow XML file: finds dynamic invocable actions with
- * actionType createSvcRequest and replaces the spId suffix in actionName/nameSegment with targetServiceProcessId.
+ * actionType createSvcRequest or getSvcProcessDetails and replaces the spId suffix
+ * in actionName/nameSegment with targetServiceProcessId.
  */
 export class FlowTransformer {
   private static readonly CREATE_SVC_REQUEST = 'createSvcRequest';
@@ -89,7 +90,7 @@ export class FlowTransformer {
 
     return {
       modified: true,
-      message: `Updated createSvcRequest actionName/nameSegment to use Service Process id: ${targetServiceProcessId}`,
+      message: `Updated createSvcRequest/getSvcProcessDetails actionName/nameSegment to use Service Process id: ${targetServiceProcessId}`,
     };
   }
 
@@ -259,9 +260,10 @@ export class FlowTransformer {
     }
   }
 
-  /** Updates createSvcRequest DIA actionName/nameSegment (spId suffix) in intake flow. */
+  /** Updates createSvcRequest and getSvcProcessDetails DIA actionName/nameSegment (spId suffix) in intake flow. */
   private static visitIntakeFlowActionCalls(node: unknown, targetServiceProcessId: string): void {
     FlowTransformer.visitDiaActionCalls(node, targetServiceProcessId, { actionType: 'createSvcRequest' });
+    FlowTransformer.visitDiaActionCalls(node, targetServiceProcessId, { actionType: 'getSvcProcessDetails' });
   }
 
   /** Updates getSvcProcessDetails DIA actionName/nameSegment (spId suffix) in fulfillment flow. */

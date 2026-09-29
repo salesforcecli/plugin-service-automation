@@ -46,6 +46,7 @@ const SUPPORTED_SERVICE_PROCESS_ELEMENTS = new Set([
   'intakeForm',
   'fulfillmentFlow',
   'preProcessors',
+  'allowsUpdate',
 ]);
 
 function filteredServiceProcessData(serviceProcessData: Record<string, unknown>): Record<string, unknown> {
