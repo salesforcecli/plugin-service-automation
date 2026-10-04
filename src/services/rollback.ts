@@ -232,7 +232,7 @@ export class RollbackService {
       logger?.error(`Unlink PATCH failed: ${error instanceof Error ? error.message : String(error)}`);
       if (error && typeof error === 'object' && 'response' in error) {
         logger?.debug(
-          `Unlink: PATCH error full response: ${formatErrorResponseForLog((error as { response: unknown }).response)}`
+          `Unlink: PATCH error full response: ${formatErrorResponseForLog((error).response)}`
         );
       }
       logger?.debug(`Unlink PATCH failed in ${Date.now() - patchStart}ms`);
@@ -303,7 +303,7 @@ export class RollbackService {
     let failureCount = 0;
 
     // Delete flows one by one (sequential for better error logging)
-    // eslint-disable-next-line no-await-in-loop
+     
     for (const flow of flowsToDelete) {
       logger?.debug(`Deleting flow: ${flow.fullName} (InteractionDefinitionVersion ID: ${flow.id})`);
       try {
