@@ -1,0 +1,51 @@
+{
+  "src/commands/service-process/retrieve.ts": {
+    "@typescript-eslint/no-base-to-string": {
+      "count": 1
+    }
+  },
+  "src/services/deployserviceprocess.ts": {
+    "complexity": {
+      "count": 6
+    }
+  },
+  "src/services/retrieveServiceProcessService.ts": {
+    "@typescript-eslint/no-base-to-string": {
+      "count": 1
+    },
+    "complexity": {
+      "count": 3
+    }
+  },
+  "src/services/rollback.ts": {
+    "@typescript-eslint/no-base-to-string": {
+      "count": 2
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "count": 1
+    },
+    "complexity": {
+      "count": 1
+    }
+  },
+  "src/utils/errorFormatter.ts": {
+    "@typescript-eslint/prefer-nullish-coalescing": {
+      "count": 1
+    }
+  },
+  "src/utils/flow/flowMetadata.ts": {
+    "preserve-caught-error": {
+      "count": 1
+    }
+  },
+  "src/utils/safeStringify.ts": {
+    "@typescript-eslint/no-base-to-string": {
+      "count": 2
+    }
+  },
+  "src/workspace/flowTransformer.ts": {
+    "@typescript-eslint/explicit-function-return-type": {
+      "count": 3
+    }
+  }
+}

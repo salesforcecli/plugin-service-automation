@@ -228,7 +228,7 @@ function getPreprocessorFromTemplateData(context: DeploymentContext): ArtifactIn
     ) {
       const firstItem: unknown = templateData.preProcessors[0];
       if (firstItem && typeof firstItem === 'object' && 'apiName' in firstItem) {
-        const first = firstItem as { apiName: unknown };
+        const first = firstItem;
         if (typeof first.apiName === 'string') {
           return {
             type: 'Preprocessor',
