@@ -1,3 +1,9 @@
+## [1.1.22](https://github.com/salesforcecli/plugin-service-automation/compare/1.1.21...1.1.22) (2026-10-09)
+
+### Bug Fixes
+
+- **deps:** bump fast-uri from 3.1.5 to 3.1.8 ([d96908f](https://github.com/salesforcecli/plugin-service-automation/commit/d96908f8757a7f831dfe125822f4d45829330d7a))
+
 ## [1.1.21](https://github.com/salesforcecli/plugin-service-automation/compare/1.1.20...1.1.21) (2026-10-09)
 
 ### Bug Fixes
