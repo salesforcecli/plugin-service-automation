@@ -1,3 +1,9 @@
+## [1.1.23](https://github.com/salesforcecli/plugin-service-automation/compare/1.1.22...1.1.23) (2026-10-09)
+
+### Bug Fixes
+
+- **deps:** bump handlebars from 4.7.9 to 4.7.10 ([da0449b](https://github.com/salesforcecli/plugin-service-automation/commit/da0449bab9a0a80000a5bb58d6d519eb7126494e))
+
 ## [1.1.22](https://github.com/salesforcecli/plugin-service-automation/compare/1.1.21...1.1.22) (2026-10-09)
 
 ### Bug Fixes
