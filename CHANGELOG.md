@@ -1,3 +1,9 @@
+## [1.1.21](https://github.com/salesforcecli/plugin-service-automation/compare/1.1.20...1.1.21) (2026-10-09)
+
+### Bug Fixes
+
+- **deps:** bump fast-copy from 3.0.2 to 3.1.0 ([5c2e937](https://github.com/salesforcecli/plugin-service-automation/commit/5c2e9370140557726ba2d265c4a1017dce24ba6c))
+
 ## [1.1.20](https://github.com/salesforcecli/plugin-service-automation/compare/1.1.19...1.1.20) (2026-08-04)
 
 ### Bug Fixes
