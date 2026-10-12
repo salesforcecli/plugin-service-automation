@@ -1,3 +1,14 @@
+# [1.2.0](https://github.com/salesforcecli/plugin-service-automation/compare/1.1.23...1.2.0) (2026-10-12)
+
+### Bug Fixes
+
+- **deploy:** drop full-response and full-payload debug logs ([0ca3008](https://github.com/salesforcecli/plugin-service-automation/commit/0ca300821917e672a951fa33f4c13339156c5b02))
+- **deploy:** transform getSvcProcessDetails in intake flow ([ce9acf8](https://github.com/salesforcecli/plugin-service-automation/commit/ce9acf88ff2621cc261aa420b8a1fbf8f10e2911))
+
+### Features
+
+- **deploy:** propagate allowsUpdate on catalog item patch ([5ae7d4b](https://github.com/salesforcecli/plugin-service-automation/commit/5ae7d4b7dbdf8157af893ee88828896af4eba855))
+
 ## [1.1.23](https://github.com/salesforcecli/plugin-service-automation/compare/1.1.22...1.1.23) (2026-10-09)
 
 ### Bug Fixes
