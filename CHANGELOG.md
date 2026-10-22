@@ -1,3 +1,9 @@
+## [1.2.2](https://github.com/salesforcecli/plugin-service-automation/compare/1.2.1...1.2.2) (2026-10-22)
+
+### Bug Fixes
+
+- **deps:** bump markdown-it from 14.3.2 to 14.3.3 ([ececb1c](https://github.com/salesforcecli/plugin-service-automation/commit/ececb1c65b8a5bf8a5a97f88c670ab73dece0a8d))
+
 ## [1.2.1](https://github.com/salesforcecli/plugin-service-automation/compare/1.2.0...1.2.1) (2026-10-14)
 
 ### Bug Fixes
