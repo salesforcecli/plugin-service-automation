@@ -1,3 +1,9 @@
+## [1.2.3](https://github.com/salesforcecli/plugin-service-automation/compare/1.2.2...1.2.3) (2026-11-15)
+
+### Bug Fixes
+
+- **deps:** bump zod from 4.1.13 to 4.6.7 ([344603d](https://github.com/salesforcecli/plugin-service-automation/commit/344603dbdad5384acc75595480c48c43b0312a47))
+
 ## [1.2.2](https://github.com/salesforcecli/plugin-service-automation/compare/1.2.1...1.2.2) (2026-10-22)
 
 ### Bug Fixes
